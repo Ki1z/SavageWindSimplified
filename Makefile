@@ -309,10 +309,15 @@ $(B)/rt/%.o: runtime/%.m $(RT_HDRS)
 # linked to a temp file, then renamed over: a copy of the game still running keeps its (old) file - relinking in
 # place gets running copies killed by macOS (code signature of the changed pages). The temp file keeps the real name
 # (in a folder of its own): on Windows the import library records the name the game code library loads it by.
-$(EXE): $(RT_OBJ) $(BACKEND_OBJ) $(UI_OBJ) $(IMGUI_OBJ) $(if $(wildcard $(DLSS_DLL)),$(DLSS_IMPORT) $(DLSS_LIB))
+$(EXE): $(RT_OBJ) $(BACKEND_OBJ) $(UI_OBJ) $(IMGUI_OBJ) $(B)/zstddeclib.o $(if $(wildcard $(DLSS_DLL)),$(DLSS_IMPORT) $(DLSS_LIB))
 	@mkdir -p $(dir $@)link
 	$(CXX) -o $(dir $@)link/$(notdir $@) $^ $(LDFLAGS)
 	mv -f $(dir $@)link/$(notdir $@) $@
+
+# vendored zstd decoder (third_party/zstd, BSD): the NSZ entries runtime/ncz.c rebuilds
+$(B)/zstddeclib.o: third_party/zstd/zstddeclib.c third_party/zstd/zstd.h
+	@mkdir -p $(dir $@)
+	$(CC) -O2 -g -fno-strict-aliasing $(OSFLAGS) -c $< -o $@
 
 # its id file (<library>.id) says what it was built from without loading it (runtime/gamelib.c)
 $(GAMELIB): $(GEN_OBJ) | $(EXE)

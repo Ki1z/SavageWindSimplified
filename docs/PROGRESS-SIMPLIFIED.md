@@ -31,7 +31,7 @@
 | 6 | UI 集成 | ✅ | setup 页"从游戏包"分区（包多选/prod.keys/title.keys + Set up from packages）、ini 持久化、Esc/B 取消、NSPE_* 失败文案映射；clang 语法检查 + 51/17 回归全绿，见 §3.7 |
 | 7 | i18n | ✅ | 38 新键（36 译 + prod.keys/title.keys 保留英文名）+ 8 驱动步骤名，13 语言全补；旧迎宾键移除；`python tools/i18n_check.py` 13 语言 0 缺失（exit 0） |
 | 8 | vendor + 打包 | ✅ | 不入库二进制，走兄弟 checkout 构建模式（同 zig/FSR 的 fetch 模式）：`make build/nstool/nstool.exe` 增量构建 + `make dist` 打包 `nstool/nstool.exe` + MIT LICENSE + README 组件行；包内 `--titlekeyset` 已验证可用；见 §3.8 |
-| 9 | E2E 验收 | ⬜ | 用 `test/games/` 三模式 + XCI + NSZ 全流程跑通；清理暂存 |
+| 9 | E2E 验收 | ⬜ | 范围收窄为 **NSP 三模式**（本体/更新/DLC，用户实测环境无 XCI/NSZ dump；XCI 等价与 NSZ NCZ 重建已有 CLI 级验收，UI 层由其他测试者反馈）；等用户提供 dumps 后跑通并清理暂存，见 §3.9 |
 
 依赖关系：0→1→2→3→4→5（6/7/8 可并行）；5 的 nstool 调用层不依赖 3。
 
@@ -236,6 +236,15 @@
 - **Makefile**：`$(B)/nstool/nstool.exe` 目标 = 兄弟仓库增量 `make -C $(NSTOOL_SRC) CC=gcc CXX=g++ -j8` + 拷贝 `bin/nstool.exe`；`make dist` 里 `$(MAKE) $(B)/nstool/nstool.exe` 后放入 `$(DIST)/nstool/nstool.exe` + `LICENSE`（MIT 原文）。运行时解析：`rt_resource("nstool/nstool.exe", NULL)` 查 `<exe目录>/nstool/nstool.exe`（paths.c:148），与 dist 布局一致；开发构建回退 `SAVAGEWIND_NSTOOL`。
 - **验证**：目标实跑通过（兄弟仓库增量后拷出 11.2MB）；`make -n dist` 配方展开正确；包内二进制 `--help` 显示 `--titlekeyset`。README 的"release zip 附带组件"清单补 nstool 行（MIT、fork 说明）。
 
+### 3.9 本机 app 构建与运行（2026-11-10 实测，E2E 前置）
+
+- **链接修复**：`runtime/ncz.c` 落在 `RT_SRC = $(wildcard runtime/*.c)` 之后，app 链接却只给测试目标带了 `third_party/zstd/zstddeclib.c` → 首次全量 app 构建报 `ZSTD_*` 未定义。修法：`$(B)/zstddeclib.o` 规则 + 加入 `$(EXE)` 前置（Makefile）。
+- **运行库必须走 `make deps-windows`**：MSYS2 的 ffmpeg 包是全量 GPL 构建（avcodec 静态引入 x264/x265/aom/glib/cairo 等 40+ 外部 DLL，删不干净），本地跑 app 和 `make dist` 都用 `build/deps-win` 的 LGPL 精简构建（`DEPS=$PWD/build/deps-win`；源码 tar 经镜像/断点续传校验 sha256 后放入 `build/deps-win/src/`）。slim 只有 4 个 DLL，静态导入闭包干净。
+- **SDL3 必须用 UCRT64 版**（`mingw-w64-ucrt-x86_64-sdl3`）：MSVCRT 环境的 mingw64 版 SDL3 在本机 `SDL_LoadObject` 连 `kernel32.dll` 都加载失败（loadso 路径问题），UCRT64 版正常。混用两个环境的 SDL3 是隐蔽陷阱。
+- **vulkan-1.dll 不入包、不 beside exe**：驱动在 System32 自装（dist 同理）；MSYS2 的 loader 拷贝反而在 SDL 的 `LoadLibraryEx` 下报 proc-not-found。
+- **冒烟验证**：`SAVAGEWIND_LAUNCHER_SHOT=<帧>:setup` + `SAVAGEWIND_SHOT_PATH=<绝对路径>` 可无头截图 setup 页（相对路径以数据根为基准，会落到 `build/build/`）。实测截图确认："从游戏包"分区（游戏包 / PROD.KEYS / TITLE.KEYS 三选择器 + 置灰的"从游戏包设置"）+ zh-Hans 文案全部正确渲染。
+- **本地数据根**：直接 `cd build && ./savagewind.exe` 会把 build/ 当数据根（生成 extracted/、sw_cache/ 等）；E2E 用独立目录启动。
+
 
 ## 7. 变更记录
 
@@ -251,3 +260,4 @@
 | 2026-11-10 | §6 步骤完成：launcher.mm"从游戏包"setup 分区 + settings 三键持久化 + Esc/B 取消 + NSPE_* 失败文案映射（§3.7）；驱动 TITLEKEYS 的 why 改为纯 id 列表；clang 工具链 + `deps/` 前缀就绪（`clang++ -fsyntax-only` launcher.mm 通过；clang 下 nsp-extract 51 + ncz 17 回归全绿） |
 | 2026-11-10 | §7 步骤完成：38 个新键 × 13 语言（de es fr he it ja ko nl pt ru th zh-Hans zh-Hant）+ 8 个驱动步骤名入表；SDL 文件对话框过滤器说明走 tr()、扩展名模式 `// i18n-skip`；旧迎宾键全表移除；`tools/i18n_check.py` 全语言 0 缺失（exit 0；8 个驱动步骤名因扫描器不读 nsp_extract.c 显示 unused，属预期） |
 | 2026-11-10 | §8 步骤完成：`$(B)/nstool/nstool.exe` 目标（兄弟 checkout 增量构建，不提交二进制）+ dist 打包 `nstool/nstool.exe` + MIT LICENSE + README 组件行；包内 `--titlekeyset` 验证可用（§3.8） |
+| 2026-11-10 | 步骤 9 前置完成：本机 app 全量构建打通（clang + `deps/` 前缀），修 `$(EXE)` 缺 zstddeclib.o 的链接 bug；`make deps-windows` 的 LGPL ffmpeg 就位；SDL3 换 UCRT64 版后 Vulkan 加载正常；setup 页无头截图实测通过（见 §3.9） |
