@@ -30,7 +30,7 @@
 | 5 | 解包驱动 `runtime/nsp_extract.c` | ✅ | 阶段 A–F + 判型 + 预检 + 取消；合成测试 51 项全绿（stub nstool 全流程），见 §3.6/§4 |
 | 6 | UI 集成 | ✅ | setup 页"从游戏包"分区（包多选/prod.keys/title.keys + Set up from packages）、ini 持久化、Esc/B 取消、NSPE_* 失败文案映射；clang 语法检查 + 51/17 回归全绿，见 §3.7 |
 | 7 | i18n | ✅ | 38 新键（36 译 + prod.keys/title.keys 保留英文名）+ 8 驱动步骤名，13 语言全补；旧迎宾键移除；`python tools/i18n_check.py` 13 语言 0 缺失（exit 0） |
-| 8 | vendor + 打包 | ⬜ | nstool 进 third_party、Makefile 目标、`make dist` 照 zig/ 模式打包 |
+| 8 | vendor + 打包 | ✅ | 不入库二进制，走兄弟 checkout 构建模式（同 zig/FSR 的 fetch 模式）：`make build/nstool/nstool.exe` 增量构建 + `make dist` 打包 `nstool/nstool.exe` + MIT LICENSE + README 组件行；包内 `--titlekeyset` 已验证可用；见 §3.8 |
 | 9 | E2E 验收 | ⬜ | 用 `test/games/` 三模式 + XCI + NSZ 全流程跑通；清理暂存 |
 
 依赖关系：0→1→2→3→4→5（6/7/8 可并行）；5 的 nstool 调用层不依赖 3。
@@ -230,6 +230,13 @@
 - **失败映射 `pkg_failure()`**：NSPE_NSTOOL/KEYS/TITLEKEYS/PACKAGE/NO_GAME/NCA/VERSION/IO/CANCEL → 各自的 headline + 处理建议（TITLEKEYS 的 why 是缺失 rights id 列表，由驱动直接给出——文案语义放 UI，驱动只报数据）。
 - **本机构建环境**（E2E 前置）：MSYS2 UCRT64 原本无 clang/SDL3/ffmpeg；已装 clang 23.1.5 + lld + llvm + gcc-libs 16（官方源 repo.msys2.org 自洽拉取；国内镜像 DB 与包版本不同步会 404/416，镜象列表已前置官方源）；`test/../deps/` 前缀（SDL3 mingw64 + ffmpeg ucrt64 + vulkan headers，`make DEPS=../deps` 即可编译 app）。launcher.mm 经 `clang++ -fsyntax-only`（真实 SDL3/ffmpeg 头）零错误。
 
+### 3.8 nstool 打包（2026-11-10）
+
+- **决策：不提交二进制**。nstool（jakcron/nstool，MIT）从兄弟 checkout `../nstool` 构建（`NSTOOL_SRC ?= ../nstool`，与 DLSS_SDK 同款覆盖模式），与 zig（tools/fetch_zig.sh）、FSR DLL（tools/fetch_fsr_dlls.py）的"构建/获取时进包"模式一致；仓库只留配方不留产物。兄弟 checkout 的 simplified-build 分支改了三处：makefile C++20 + `-municode`、CnmtProcess 的 fmt v10 consteval 修复、libtoolchain 同款修复，并且**重新启用了 `--titlekeyset`**（上游已禁用；驱动的 title.keys 流程依赖它）。
+- **Makefile**：`$(B)/nstool/nstool.exe` 目标 = 兄弟仓库增量 `make -C $(NSTOOL_SRC) CC=gcc CXX=g++ -j8` + 拷贝 `bin/nstool.exe`；`make dist` 里 `$(MAKE) $(B)/nstool/nstool.exe` 后放入 `$(DIST)/nstool/nstool.exe` + `LICENSE`（MIT 原文）。运行时解析：`rt_resource("nstool/nstool.exe", NULL)` 查 `<exe目录>/nstool/nstool.exe`（paths.c:148），与 dist 布局一致；开发构建回退 `SAVAGEWIND_NSTOOL`。
+- **验证**：目标实跑通过（兄弟仓库增量后拷出 11.2MB）；`make -n dist` 配方展开正确；包内二进制 `--help` 显示 `--titlekeyset`。README 的"release zip 附带组件"清单补 nstool 行（MIT、fork 说明）。
+
+
 ## 7. 变更记录
 
 | 日期 | 事项 |
@@ -243,3 +250,4 @@
 | 2026-11-10 | §5 步骤完成：`runtime/nsp_extract.c/.h`（A–F 全链路 + NSPE_* 错误码）+ `runtime/aes128.{c,h}`（共享 AES-128 双向）+ `make test-nsp-extract`（51 项合成，stub nstool 全流程）+ XTS 已知答案向量 `tools/test_xts_vector.inc`。NCA 头偏移实测定稿（字段区 0x200，见 §3.6）；ncz 17 项 + 黄金回归全绿 |
 | 2026-11-10 | §6 步骤完成：launcher.mm"从游戏包"setup 分区 + settings 三键持久化 + Esc/B 取消 + NSPE_* 失败文案映射（§3.7）；驱动 TITLEKEYS 的 why 改为纯 id 列表；clang 工具链 + `deps/` 前缀就绪（`clang++ -fsyntax-only` launcher.mm 通过；clang 下 nsp-extract 51 + ncz 17 回归全绿） |
 | 2026-11-10 | §7 步骤完成：38 个新键 × 13 语言（de es fr he it ja ko nl pt ru th zh-Hans zh-Hant）+ 8 个驱动步骤名入表；SDL 文件对话框过滤器说明走 tr()、扩展名模式 `// i18n-skip`；旧迎宾键全表移除；`tools/i18n_check.py` 全语言 0 缺失（exit 0；8 个驱动步骤名因扫描器不读 nsp_extract.c 显示 unused，属预期） |
+| 2026-11-10 | §8 步骤完成：`$(B)/nstool/nstool.exe` 目标（兄弟 checkout 增量构建，不提交二进制）+ dist 打包 `nstool/nstool.exe` + MIT LICENSE + README 组件行；包内 `--titlekeyset` 验证可用（§3.8） |

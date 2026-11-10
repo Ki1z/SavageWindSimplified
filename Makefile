@@ -393,6 +393,16 @@ dmg: app
 # Needs: Windows 10+ x64, a Vulkan 1.3 driver, an SSE4.2 CPU (GENARCH_COMPAT x86-64-v2; checked at startup).
 DIST     := build/dist/Savage Wind
 WIN_B    := build/win-release
+# nstool (github.com/jakcron/nstool, MIT) unpacks the setup's game packages (NSP/XCI/NSZ/XCZ): built from the
+# sibling checkout, whose simplified-build branches re-enable --titlekeyset (runtime/nsp_extract.c uses it) and
+# carry the UCRT64 build fixes. Shipped in the release next to the exe, which finds it as nstool/nstool.exe.
+NSTOOL_SRC ?= ../nstool
+
+$(B)/nstool/nstool.exe:
+	$(MAKE) -C $(NSTOOL_SRC) CC=gcc CXX=g++ -j8
+	mkdir -p $(B)/nstool
+	cp $(NSTOOL_SRC)/bin/nstool.exe $@
+
 deps-windows:
 	tools/build_deps_windows.sh
 dist:
@@ -429,6 +439,8 @@ dist:
 		cp "$(DLSS_SDK)/lib/Windows_x86_64/rel/nvngx_dlss.dll" "$(DIST)/"; \
 		cp "$(DLSS_SDK)/LICENSE.txt" "$(DIST)/NVIDIA-DLSS-LICENSE.txt"; \
 	fi
+	$(MAKE) $(B)/nstool/nstool.exe
+	mkdir "$(DIST)/nstool" && cp $(B)/nstool/nstool.exe "$(DIST)/nstool/" && cp $(NSTOOL_SRC)/LICENSE "$(DIST)/nstool/LICENSE"
 	PATH="$(CURDIR)/build/deps-win/bin:$$PATH" ldd $(WIN_B)/savagewind.exe | awk '(/ucrt64/ || /deps-win/) && !/vulkan-1/ {print $$3}' | sort -u | \
 	    xargs -I{} cp -u {} "$(DIST)/"
 	! ls "$(DIST)" | grep -iE 'x264|x265|xvid|postproc'  # (no GPL codec libraries in the release)

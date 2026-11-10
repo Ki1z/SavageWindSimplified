@@ -394,6 +394,8 @@ The Windows release zip also bundles, unchanged unless noted, under their own li
   (GPL 2.0, source at that link) and python-lz4 4.4.5 (BSD).
 - AMD FidelityFX SDK 1.1.4 (MIT, `FidelityFX-LICENSE.txt`), compiled into savagewind.exe: FSR 3 frame interpolation,
   optical flow and the Vulkan backend, from [its source](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/tree/v1.1.4)
+- [nstool](https://github.com/jakcron/nstool) (MIT, `nstool/LICENSE`), the package unpacker behind the game-files
+  setup's "from game packages" flow, built from this project's fork of it (the `--titlekeyset` option re-enabled).
   with two alignment fixes (`third_party/FidelityFX/README.md`) and shaders compiled by `tools/ffx_shaders.py`.
 - The Fira Sans font, Medium and SemiBold (SIL OFL 1.1, `FiraSans-OFL.txt`), and the Noto Sans Thai and Noto Sans
   Hebrew fonts, Medium, for the menus in Thai and Hebrew (SIL OFL 1.1, `NotoSansThai-OFL.txt`,
