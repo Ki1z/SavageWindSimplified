@@ -711,7 +711,17 @@ $(B)/test_dlc_check: tools/test_dlc_check.c runtime/dlc_check.c runtime/dlc_chec
 test-dlc-check: $(B)/test_dlc_check
 	$(B)/test_dlc_check
 
-.PHONY: test-game-file-size test-file-size-cache test-dlc-check
+# NCZ to NCA rebuild (NSZ/XCZ entries). Golden check against a real dump:
+#   $(B)/test_ncz <file.ncz>              (sha256 of the rebuilt NCA must start with the .ncz name)
+#   $(B)/test_ncz <file.ncz> <want.nca>   (rebuild and compare bytes with a known-good NCA)
+$(B)/test_ncz: tools/test_ncz.c runtime/ncz.c runtime/ncz.h third_party/zstd/zstddeclib.c third_party/zstd/zstd.h
+	@mkdir -p $(B)
+	$(CC) -O1 -std=gnu11 -Wall -Wextra -Werror $(OSFLAGS) -Iruntime -Ithird_party/zstd -o $@ tools/test_ncz.c runtime/ncz.c third_party/zstd/zstddeclib.c
+
+test-ncz: $(B)/test_ncz
+	$(B)/test_ncz
+
+.PHONY: test-game-file-size test-file-size-cache test-dlc-check test-ncz
 
 # the command layer of the control endpoint (who may run what, the queue, the text)
 $(B)/test_control: tools/test_control.c runtime/control.c runtime/control.h
