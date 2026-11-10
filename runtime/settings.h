@@ -168,6 +168,10 @@ typedef struct {
     bool save_backups;   // Saves > Back up at each start: a copy of the save folder as the game starts (runtime/save_backup.c)
     bool auto_continue;  // Gameplay > Start at Continue: past the start screen into the latest save (hle/input.c)
     bool menu_tip_seen;  // the start screen's one-time "how to open the menu" note was shown (first PLAY ever)
+    // The setup's package flow (runtime/ui/launcher.mm): the last choices, offered again at the next setup
+    char setup_packages[1024];  // the .nsp/.xci/.nsz/.xcz files, ';'-separated (a path list runs long)
+    char setup_prod_keys[400];  // their prod.keys
+    char setup_title_keys[400]; // their title.keys ("" : the packages' own tickets cover it)
 } Settings;
 
 #define RUMBLE_STRENGTH_MIN 10

@@ -179,15 +179,15 @@ void settings_load(void) {
         pc_controls_env();
         return;
     }
-    char line[256];
+    char line[1280];  // (the setup's package list runs long: paths for many files on one line)
     bool tip_key = false;
     int version = 1;
     char old_res[16] = "";
     while (fgets(line, sizeof line, f)) {
         char key[64];
-        char val[128];
+        char val[1104];
         val[0] = 0;
-        if (sscanf(line, " %63[^= ] = %127[^\r\n]", key, val) < 1) continue;
+        if (sscanf(line, " %63[^= ] = %1103[^\r\n]", key, val) < 1) continue;
         for (size_t n = strlen(val); n && (val[n - 1] == ' ' || val[n - 1] == '\t'); n--) val[n - 1] = 0;  // (a file
         // edited by hand: Notepad's CRLF line ends and stray spaces would make the names below not match)
         if (!strcmp(key, "fullscreen")) g_settings.fullscreen = atoi(val) != 0;
@@ -370,6 +370,9 @@ void settings_load(void) {
                 if (!strcmp(val, g_voice_languages[i].folder)) g_settings.voice_language = i;
         }
         else if (!strcmp(key, "menu_tip_seen")) g_settings.menu_tip_seen = atoi(val) != 0, tip_key = true;
+        else if (!strcmp(key, "setup_packages")) snprintf(g_settings.setup_packages, sizeof g_settings.setup_packages, "%s", val);
+        else if (!strcmp(key, "setup_prod_keys")) snprintf(g_settings.setup_prod_keys, sizeof g_settings.setup_prod_keys, "%s", val);
+        else if (!strcmp(key, "setup_title_keys")) snprintf(g_settings.setup_title_keys, sizeof g_settings.setup_title_keys, "%s", val);
         else bind_settings_load(key, val);  // bind_pad_* / bind_key_*: runtime/hle/bindings.c
     }
     fclose(f);
@@ -569,6 +572,9 @@ void settings_save(void) {
     fprintf(f, "stick_camera_y = %d\n", g_settings.stick_cam_y);
     fprintf(f, "start_at_continue = %d\n", g_settings.auto_continue);
     fprintf(f, "menu_tip_seen = %d\n", g_settings.menu_tip_seen);
+    if (g_settings.setup_packages[0]) fprintf(f, "setup_packages = %s\n", g_settings.setup_packages);
+    if (g_settings.setup_prod_keys[0]) fprintf(f, "setup_prod_keys = %s\n", g_settings.setup_prod_keys);
+    if (g_settings.setup_title_keys[0]) fprintf(f, "setup_title_keys = %s\n", g_settings.setup_title_keys);
     bind_settings_save(f);
     fclose(f);
 }

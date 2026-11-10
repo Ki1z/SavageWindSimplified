@@ -48,6 +48,7 @@ extern "C" {
 #include "platform.h"
 #include "paths.h"
 #include "gamebuild.h"
+#include "nsp_extract.h"
 #include "gamelib.h"
 #include "game_versions.h"
 #include "dlc_check.h"
@@ -784,12 +785,191 @@ done:
     return NULL;
 }
 
+// ------------------------------------------------------------------ setup from game packages (NSP/XCI/NSZ)
+// The player brings the game's packages and their key files instead of extracted files (runtime/nsp_extract.c runs
+// the extraction with nstool and the ncz rebuild, straight into the data root's game folders), then the game code
+// builds from it as after a folder setup. Esc / B stops it: the driver undoes what it wrote.
+static std::atomic<bool> g_pkg_cancel{false};
+static bool g_packaging;  // (the busy overlay's title and its Esc / B note)
+
+static void pkg_progress(void *, const char *step, double fraction) {
+    if (step) set_job(step);
+    if (fraction >= 0) {  // (the bar: the extraction is its first tenth, like the folder flow's copy)
+        g_total = 1000;
+        g_done = (unsigned long long)(fraction * 1000.0);
+    }
+}
+
+static int pkg_cancelled(void *) { return g_pkg_cancel ? 1 : 0; }
+
+static void pkg_remove_game_files(const char *dir) { rt_remove_game_files(dir); }
+
+// The driver's answers, in the setup page's failure form (a headline and what to do about it)
+static void pkg_failure(NspeError e, const char *why) {
+    switch (e) {
+    case NSPE_NSTOOL:
+        set_job("The extraction helper program is missing", true,
+                "Savage Wind ships it next to itself, in the nstool folder. On a developer build, set SAVAGEWIND_NSTOOL "
+                "to its path. The log has the details.");
+        break;
+    case NSPE_KEYS:
+        set_job("prod.keys can't be read", true,
+                "Choose the prod.keys file that belongs to your console's firmware (the keys files page of the "
+                "documentation has where to find it). It must hold an NCA header key. The log has the details.");
+        break;
+    case NSPE_TITLEKEYS:
+        set_job("title.keys is missing some of the packages' keys", true,
+                (std::string)trv("The packages hold encrypted content these keys don't cover:") + " " + (why ? why : "") +
+                ". " + tr("Give the title.keys that belongs to your console and the game, or packages that bring their "
+                "own tickets (an NSP dump usually does)."));
+        break;
+    case NSPE_PACKAGE:
+        set_job("A package couldn't be read", true,
+                "Check that the packages are complete and open (not in use elsewhere), and try again. nstool's log in "
+                "the staging folder has the details.");
+        break;
+    case NSPE_NO_GAME:
+    case NSPE_NCA:
+        set_job(e == NSPE_NO_GAME ? "These packages hold no game for this setup" : "A package's content can't be read",
+                true, (std::string)(why && *why ? why : "") + " " +
+                tr("The setup needs the game's packages: the base game and its update, each with their keys."));
+        break;
+    case NSPE_VERSION:
+        set_job("These packages aren't a supported game version", true,
+                (std::string)(why && *why ? why : "") + " " +
+                tr("Update the game on your console (as the documentation's steps say), dump it again and choose the "
+                "new packages."));
+        break;
+    case NSPE_IO:
+        set_job("Setup didn't finish", true,
+                "Make sure there's enough free space on the drive with Savage Wind's data folder and try again. The log "
+                "has the details.");
+        break;
+    case NSPE_CANCEL:
+        set_job("Setting up from the packages stopped", true, "Nothing was set up: the stopped setup undid itself.");
+        break;
+    default:
+        set_job("Setup didn't finish", true, "The log has the details.");
+        break;
+    }
+}
+
+static void *package_thread(void *) {
+    char packages_copy[sizeof g_settings.setup_packages];
+    char prod_copy[sizeof g_settings.setup_prod_keys], title_copy[sizeof g_settings.setup_title_keys];
+    pthread_mutex_lock(&g_lock);
+    snprintf(packages_copy, sizeof packages_copy, "%s", g_settings.setup_packages);
+    snprintf(prod_copy, sizeof prod_copy, "%s", g_settings.setup_prod_keys);
+    snprintf(title_copy, sizeof title_copy, "%s", g_settings.setup_title_keys);
+    pthread_mutex_unlock(&g_lock);
+    g_done = 0, g_total = 0, g_build_frac = -1, g_copy_skipped = true;
+    g_pkg_cancel = false;
+    // (an already set up game whose exefs the setup leaves alone: a DLC-only package run; nothing new to precompile)
+    std::string main_path = g_root + "/exefs/main";
+    struct stat before = {};
+    stat(main_path.c_str(), &before);
+    std::vector<std::string> pkgs;
+    for (char *tok = strtok(packages_copy, ";"); tok; tok = strtok(NULL, ";")) if (*tok) pkgs.push_back(tok);
+    std::vector<const char *> pkgv;
+    for (auto &p : pkgs) pkgv.push_back(p.c_str());
+    std::string staging = g_root + "/sw_cache";
+    char nstool[1100] = "";
+    rt_resource("nstool/nstool" PLAT_EXE_SUFFIX, NULL, nstool, sizeof nstool);
+    NspeOpts o = {};
+    o.packages = pkgv.data();
+    o.package_count = (int)pkgv.size();
+    o.prod_keys = prod_copy;
+    o.title_keys = title_copy;
+    o.nstool_path = nstool;  // ("" : the driver falls back to SAVAGEWIND_NSTOOL, the developer override)
+    o.game_dir = g_root.c_str();
+    o.staging_dir = staging.c_str();
+    o.remove_game_files = pkg_remove_game_files;
+    o.progress = pkg_progress;
+    o.cancelled = pkg_cancelled;
+    char why[512] = "";
+    NspeError e = nsp_extract_run(&o, why, sizeof why);
+    if (e != NSPE_OK) { pkg_failure(e, why); goto done; }
+    // a DLC-only package run adds to the game files already set up: the exefs is left in place (nothing new to
+    // precompile, no game code to build again); anything else replaced them
+    bool dlc_only;
+    {
+        struct stat after = {};
+        dlc_only = !stat(main_path.c_str(), &after) && before.st_mtime == after.st_mtime && before.st_size == after.st_size;
+    }
+    if (!dlc_only && !build_game_code()) goto done;
+    {
+        std::string check = check_game_files(g_root);
+#ifndef __APPLE__
+        if (check.empty() && !dlc_only && g_settings.precompile_shaders && shader_precompile_available()) run_precompile();
+#endif
+        RtDlcCheck dc = rt_dlc_check(g_root.c_str());
+        pthread_mutex_lock(&g_lock);
+        g_dlc = dc;
+        pthread_mutex_unlock(&g_lock);
+        dlc_log(dc);
+        if (!check.empty())
+            set_failure(check.find("NSO") != std::string::npos ? FAIL_VERSION
+                        : version_failure(check) ? version_failure(check) : FAIL_MISSING);
+        else
+            set_job("Game files ready.");
+    }
+done:
+    pthread_mutex_lock(&g_lock);
+    g_packaging = false;
+    if (g_job_failed) g_stay_on_setup = true;
+    g_busy = false;
+    pthread_mutex_unlock(&g_lock);
+    return NULL;
+}
+
 // ------------------------------------------------------------------ folder dialog (SDL calls back on any thread)
 static void SDLCALL picked(void *, const char *const *files, int) {
     if (!files || !files[0]) return;
     pthread_mutex_lock(&g_lock);
     g_src = files[0];
     pthread_mutex_unlock(&g_lock);
+}
+
+// The setup's package rows: the packages (multi-select, ';'-joined into the setting) and the two keys files. SDL
+// calls back on any thread: the picks land in these buffers and the UI thread folds them into the settings.
+static std::vector<std::string> g_pkg_picks, g_prod_pick, g_title_pick;
+
+static void SDLCALL picked_packages(void *, const char *const *files, int) {
+    if (!files || !files[0]) return;
+    pthread_mutex_lock(&g_lock);
+    for (int i = 0; files[i]; i++) g_pkg_picks.push_back(files[i]);
+    pthread_mutex_unlock(&g_lock);
+}
+
+static void SDLCALL picked_keys(void *userdata, const char *const *files, int) {
+    if (!files || !files[0]) return;
+    pthread_mutex_lock(&g_lock);
+    ((std::vector<std::string> *)userdata)->push_back(files[0]);
+    pthread_mutex_unlock(&g_lock);
+}
+
+// (once per frame on the setup page)
+static void apply_setup_picks() {
+    pthread_mutex_lock(&g_lock);
+    std::vector<std::string> pkgs, prod, title;
+    pkgs.swap(g_pkg_picks);
+    prod.swap(g_prod_pick);
+    title.swap(g_title_pick);
+    pthread_mutex_unlock(&g_lock);
+    if (!pkgs.empty()) {
+        std::string join;
+        for (auto &p : pkgs) { if (!join.empty()) join += ';'; join += p; }
+        snprintf(g_settings.setup_packages, sizeof g_settings.setup_packages, "%s", join.c_str());
+        settings_save();
+    }
+    if (!prod.empty()) {
+        snprintf(g_settings.setup_prod_keys, sizeof g_settings.setup_prod_keys, "%s", prod[0].c_str());
+        settings_save();
+    }
+    if (!title.empty()) {
+        snprintf(g_settings.setup_title_keys, sizeof g_settings.setup_title_keys, "%s", title[0].c_str());
+        settings_save();
+    }
 }
 
 // ------------------------------------------------------------------ the user's own Nintendo fonts (not shipped)
@@ -1670,12 +1850,14 @@ extern "C" void launcher_run(const char *root, int mode) {
                     ImGui::PushTextWrapPos(0);
                     ImGui::TextColored(ImVec4(0.86f, 0.85f, 0.80f, 1), "%s",
                                        trv("Savage Wind needs your own copy of the game, version %s. Choose the folder "
-                                           "with its extracted files and set them up: the game starts when it's done.")
+                                           "with its extracted files, or the game's packages (NSP, XCI, NSZ) with their "
+                                           "keys files, and set them up: the game starts when it's done.")
                                            .c_str());
                     ImGui::PopTextWrapPos();
                     ImGui::Dummy(ImVec2(0, 10 * sc));
                 }
 
+                apply_setup_picks();
                 pthread_mutex_lock(&g_lock);
                 std::string src = g_src, job = g_job, job_hint = g_job_hint;
                 bool failed = g_job_failed;
@@ -1866,6 +2048,62 @@ extern "C" void launcher_run(const char *root, int mode) {
                         pthread_create(&t, NULL, extract_thread, NULL);
                         pthread_detach(t);
                     }
+                    if (!g_confirm_delete) {  // or straight from the game's packages (NSP/XCI/NSZ/XCZ) with their keys
+                        opt_section("From game packages");
+                        if (busy) opt_disable_next();
+                        bool pk = g_settings.setup_packages[0], pr = g_settings.setup_prod_keys[0],
+                             ti = g_settings.setup_title_keys[0];
+                        std::string pk_v = tr(pk ? "Selected" : "Choose...");
+                        std::string pk_list = g_settings.setup_packages;  // (';'-separated: the explanation lists them)
+                        for (auto &c : pk_list) if (c == ';') c = '\n';
+                        std::string pk_d = trv("The game's own package files: NSP, XCI, NSZ or XCZ, the base game, its "
+                                               "update and the downloadable content in any mix. Savage Wind extracts "
+                                               "them into its copy; the packages themselves aren't changed.");
+                        if (pk) pk_d += std::string("\n\n") + tr("Chosen:") + "\n" + pk_list;
+                        if (opt_action("Game packages", pk_v.c_str(), pk_d.c_str(), true)) {
+                            SDL_DialogFileFilter filters[] = {{"Game packages", "nsp;xci;nsz;xcz"}};
+                            SDL_ShowOpenFileDialog(picked_packages, NULL, win, filters, 1, NULL, true);
+                        }
+                        if (pk) check_left_of_value(pk_v);
+                        std::string pr_v = tr(pr ? "Selected" : "Choose...");
+                        std::string pr_d = trv("The keys file of the console the games came from: Savage Wind reads it to "
+                                               "decrypt, it is never copied anywhere or shown.");
+                        if (pr) pr_d += std::string("\n\n") + tr("Chosen:") + " " + g_settings.setup_prod_keys;
+                        if (opt_action("prod.keys", pr_v.c_str(), pr_d.c_str(), true)) {
+                            SDL_DialogFileFilter filters[] = {{"Keys files", "keys"}};
+                            SDL_ShowOpenFileDialog(picked_keys, &g_prod_pick, win, filters, 1, NULL, false);
+                        }
+                        if (pr) check_left_of_value(pr_v);
+                        std::string ti_v = tr(ti ? "Selected" : "Choose...");
+                        std::string ti_d = trv("The games' title.keys: their decryption keys, as the documentation's keys "
+                                               "steps gather them. An NSP dump usually brings its own tickets, and "
+                                               "doesn't need this file.");
+                        if (ti) ti_d += std::string("\n\n") + tr("Chosen:") + " " + g_settings.setup_title_keys;
+                        if (opt_action("title.keys", ti_v.c_str(), ti_d.c_str(), true)) {
+                            SDL_DialogFileFilter filters[] = {{"Keys files", "keys"}};
+                            SDL_ShowOpenFileDialog(picked_keys, &g_title_pick, win, filters, 1, NULL, false);
+                        }
+                        if (ti) check_left_of_value(ti_v);
+                        std::string pkg_d = tr("Extracts the game (and the downloadable content) from the packages into "
+                                               "Savage Wind's copy and recompiles the game from them. Only once, and it "
+                                               "may take a while: the update's data is merged over the base game's.");
+                        if (!job.empty())
+                            pkg_d += std::string("\n\n") + trv(job) + (job_hint.empty() ? "" : std::string(".\n") + trv(job_hint));
+                        if (busy || !pk || !pr) opt_disable_next();
+                        if (opt_action("Set up from packages", busy ? tr("Working...") : "", pkg_d.c_str(), true)) {
+                            settings_save();
+                            g_file_size.set_suspended(true);
+                            g_pkg_cancel = false;
+                            pthread_mutex_lock(&g_lock);
+                            g_busy = true;
+                            g_packaging = true;
+                            pthread_mutex_unlock(&g_lock);
+                            g_stay_on_setup = true;
+                            pthread_t t;
+                            pthread_create(&t, NULL, package_thread, NULL);
+                            pthread_detach(t);
+                        }
+                    }
                 }
                 if (!job_line.empty()) {  // the current step / result
                     ImGui::Dummy(ImVec2(0, 14 * sc));
@@ -1914,9 +2152,17 @@ extern "C" void launcher_run(const char *root, int mode) {
                     bool recompiling = g_build_frac >= 0, dlc_check = g_dlc_checking;
                     const char *title = tr(dlc_check ? "Downloadable content"
                                            : recompiling ? "Recompiling the game" : "Setting up the game files");
-                    const char *const notes[] = {tr("This only needs to be done once and may take a while."),
-                                                 tr("Esc or B stops it: what is done is kept.")};
+                    const char *note0 = tr("This only needs to be done once and may take a while.");
+                    const char *note1 = tr("Esc or B stops it: what is done is kept.");
                     int nnotes = dlc_check ? 0 : recompiling ? 1 : 0;
+                    if (g_packaging) {  // from the game packages: the stop undoes what was written so far
+                        title = tr("Setting up from the packages");
+                        note1 = tr("Esc or B stops it: a stopped setup undoes itself.");
+                        nnotes = 2;
+                        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
+                            g_pkg_cancel = true;
+                    }
+                    const char *const notes[] = {note0, note1};
 #ifndef __APPLE__
                     bool shaders = g_precompiling;
                     if (shaders) {

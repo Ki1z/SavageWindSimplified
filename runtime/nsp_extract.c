@@ -566,7 +566,7 @@ NspeError nsp_extract_run(const NspeOpts *o, char *why, size_t why_size) {
             list[0] = 0;
             for (int i = 0; i < nmissing; i++) snprintf(list + strlen(list), sizeof list - strlen(list), "%s%s", i ? " " : "", missing[i]);
             LOG("keys: missing titlekeys for %s\n", list);
-            set_why(why, why_size, "the encryption keys are missing for %s (give title.keys, or packages that bring their tickets)", list);
+            set_why(why, why_size, "%s", list);   // (the rights ids; the setup's failure text wraps them)
             err = NSPE_TITLEKEYS;
             break;
         }

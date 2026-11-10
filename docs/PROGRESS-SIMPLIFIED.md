@@ -28,7 +28,7 @@
 | 3 | `runtime/ncz.c` | ✅ | NCZ→NCA 重建模块（libzstd 1.5.7 + 计算式 AES-128-CTR），见 §3.4 |
 | 4 | NCZ 单元测试 | ✅ | 17 项合成检查 + 真实 NSZ 黄金验收（sha256 = 内容 ID），见 §3.4 |
 | 5 | 解包驱动 `runtime/nsp_extract.c` | ✅ | 阶段 A–F + 判型 + 预检 + 取消；合成测试 51 项全绿（stub nstool 全流程），见 §3.6/§4 |
-| 6 | UI 集成 | ⬜ | setup 页三行（包多选/prod.keys/title.keys）、浏览校验、ini 持久化 |
+| 6 | UI 集成 | ✅ | setup 页"从游戏包"分区（包多选/prod.keys/title.keys + Set up from packages）、ini 持久化、Esc/B 取消、NSPE_* 失败文案映射；clang 语法检查 + 51/17 回归全绿，见 §3.7 |
 | 7 | i18n | ⬜ | 13 语言条目 |
 | 8 | vendor + 打包 | ⬜ | nstool 进 third_party、Makefile 目标、`make dist` 照 zig/ 模式打包 |
 | 9 | E2E 验收 | ⬜ | 用 `test/games/` 三模式 + XCI + NSZ 全流程跑通；清理暂存 |
@@ -219,6 +219,17 @@
 
 ---
 
+### 3.7 UI 集成（`runtime/ui/launcher.mm` + settings，2026-11-10）
+
+- **settings 三键**：`setup_packages[1024]`（`;` 分隔路径）、`setup_prod_keys/setup_title_keys[400]`；load 解析缓冲放宽到 `line[1280]/val[1104]`（`%1103`），save 仅非空时写出行（旧 ini 无这些键也兼容）。存放的是选择本身，不是凭据内容。
+- **setup 页**：目录行之后新增"From game packages"分区（`!g_confirm_delete` 才显示，busy 时全部禁用）：Game packages（`SDL_ShowOpenFileDialog` 多选，过滤器 `nsp;xci;nsz;xcz`）、prod.keys、title.keys（单选，`keys` 过滤），三个 Checkmark 复用 `check_left_of_value`；"Set up from packages" 在包+prod.keys 就绪前 `opt_disable_next()`。SDL 对话框回调在任意线程：先落到 `g_pkg_picks/g_prod_pick/g_title_pick`（`g_lock` 保护），UI 线程每帧 `apply_setup_picks()` 折叠进设置并 `settings_save()`。
+- **package_thread**：镜像 extract_thread 的尾部——驱动 `nsp_extract_run`（nstool 走 `rt_resource("nstool/nstool" PLAT_EXE_SUFFIX)`，空则回退 `SAVAGEWIND_NSTOOL`；staging 固定 `<数据根>/sw_cache`；`remove_game_files` 注入 `rt_remove_game_files`）→ `build_game_code()` → check 块（check_game_files + rt_dlc_check + run_precompile）→ ready 文案。
+- **dlc_only 判定**：运行前后 `stat(exefs/main)` 的 mtime+size 都不变 → 只加了 DLC（驱动未动本体文件），跳过重编译与预编译；否则按全量设置走。
+- **进度条映射**：驱动 fraction×1000 写 `g_done/g_total`、`g_copy_skipped=true` → 提取阶段占条的前 10%，建码阶段走满条（与目录流程观感一致）。
+- **取消**：busy 覆盖层对包流程显示专属标题与"停止即自毁"提示，Esc/B 置 `g_pkg_cancel`（atomic），驱动轮询到后按 CANCEL 收尾并二次清除。
+- **失败映射 `pkg_failure()`**：NSPE_NSTOOL/KEYS/TITLEKEYS/PACKAGE/NO_GAME/NCA/VERSION/IO/CANCEL → 各自的 headline + 处理建议（TITLEKEYS 的 why 是缺失 rights id 列表，由驱动直接给出——文案语义放 UI，驱动只报数据）。
+- **本机构建环境**（E2E 前置）：MSYS2 UCRT64 原本无 clang/SDL3/ffmpeg；已装 clang 23.1.5 + lld + llvm + gcc-libs 16（官方源 repo.msys2.org 自洽拉取；国内镜像 DB 与包版本不同步会 404/416，镜象列表已前置官方源）；`test/../deps/` 前缀（SDL3 mingw64 + ffmpeg ucrt64 + vulkan headers，`make DEPS=../deps` 即可编译 app）。launcher.mm 经 `clang++ -fsyntax-only`（真实 SDL3/ffmpeg 头）零错误。
+
 ## 7. 变更记录
 
 | 日期 | 事项 |
@@ -230,3 +241,4 @@
 | 2026-11-10 | §3/§4 步骤完成：`third_party/zstd/` vendor（1.5.7 解码合并源）、`runtime/ncz.c/.h`、`tools/test_ncz.c`、`make test-ncz`。合成 17 项全绿；真实 988MB NSZ 条目重建后 sha256 = `94a679f1…`，与原始 NCA 字节一致（黄金验收 ✅）。修三个实现级 bug：S 盒越界、输出 `wb+`、zstd 截断误判 |
 | 2026-11-10 | 修复本文档双重编码损坏（重写为干净 UTF-8），并补 §3.4 最终语义、§5.8 编码约束、§6 新故障行 |
 | 2026-11-10 | §5 步骤完成：`runtime/nsp_extract.c/.h`（A–F 全链路 + NSPE_* 错误码）+ `runtime/aes128.{c,h}`（共享 AES-128 双向）+ `make test-nsp-extract`（51 项合成，stub nstool 全流程）+ XTS 已知答案向量 `tools/test_xts_vector.inc`。NCA 头偏移实测定稿（字段区 0x200，见 §3.6）；ncz 17 项 + 黄金回归全绿 |
+| 2026-11-10 | §6 步骤完成：launcher.mm"从游戏包"setup 分区 + settings 三键持久化 + Esc/B 取消 + NSPE_* 失败文案映射（§3.7）；驱动 TITLEKEYS 的 why 改为纯 id 列表；clang 工具链 + `deps/` 前缀就绪（`clang++ -fsyntax-only` launcher.mm 通过；clang 下 nsp-extract 51 + ncz 17 回归全绿） |
