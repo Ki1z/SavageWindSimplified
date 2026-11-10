@@ -1,141 +1,217 @@
-# SavageWindSimplified 杩涘害涓庤璁℃枃妗?
-> 鏈湴鍒嗘敮鐗规€э細NSP/XCI/NSZ 鍖呰В鍖呴泦鎴愩€?*绂佹涓婃父**锛堜笂娓?README 鎵胯 "never decrypts anything"锛夈€?> 鏈枃妗ｆ槸璁捐鍩虹嚎锛氬嚭闂鏃跺厛缈汇€屄? 鏁呴殰閫熸煡琛ㄣ€嶅垽鏂槸鍚﹀師鏈夎璁＄己闄凤紝鍐嶅姩浠ｇ爜銆?> 鏈€鍚庢洿鏂帮細2026-11-10
+# SavageWindSimplified 进度与设计文档
+
+> 本地分支特性：NSP/XCI/NSZ 包解包集成。**禁止上游**（上游 README 承诺 "never decrypts anything"）。
+> 本文档是设计基线：出问题时先翻「§6 故障速查表」判断是否原有设计缺陷，再动代码。
+> 最后更新：2026-11-10
 
 ---
 
-## 0. 椤圭洰瀹氫綅涓庣害鏉?
-- 浠撳簱锛歚<ws>\SavageWindSimplified`锛堝厠闅嗚嚜 `<ws>\SavageWindRecomp`锛岃繙绋嬪悕 `upstream` 鎸囨湰鍦帮紝鍒嗘敮 `simplified`锛夈€?- 鐩爣锛氳缃〉鏂板"娓告垙鍖?+ prod.keys + title.keys"涓夋潯鐩?鈫?璋?nstool 瑙ｅ寘锛坋xefs/romfs/aoc1/aoc2锛夆啋 鐩存帴钀藉埌 SavageWind 鏈熸湜鐨勬渶缁堜綅缃?鈫?缂栬瘧銆?- 纭害鏉燂細
-  1. 姘镐笉涓婃父锛涙案涓嶆彁浜?key/娓告垙鏂囦欢锛涙棩蹇椾笉鎵撳嵃浠讳綍瀵嗛挜鏉愭枡锛堢 `-v/--showkeys`锛夈€?  2. 澶嶇敤 SavageWind 鏃㈡湁鏈哄埗锛歚plat_spawn/log_path/kill/wait`锛坧latform.h:84锛夎窇澶栭儴杩涚▼銆佽繘搴︽潯 Esc/B 鍙栨秷锛坓amebuild 杩涚▼璺熻釜妯″紡锛夈€丼DL 鏂囦欢瀵硅瘽妗嗗甫杩囨护鍣ㄣ€乣savagewind.ini` 鎸佷箙鍖栥€?  3. 璺宠繃 `romfs_copy_tree`锛氭洿鏂?RomFS 鐩存帴瑙ｅ埌鏈€缁堜綅缃紙鐪佷竴娆?14GB 澶嶅埗锛夈€?  4. AGENTS.md 鎯緥缁х画閫傜敤锛堣繖鏄?SavageWind 鐨勪唬鐮佸簱锛夈€?
+## 0. 项目定位与约束
+
+- 仓库：`<ws>\SavageWindSimplified`（克隆自 `<ws>\SavageWindRecomp`，远程名 `upstream` 指本地，分支 `simplified`）。
+- 目标：设置页新增"游戏包 + prod.keys + title.keys"三条目 → 调 nstool 解包（exefs/romfs/aoc1/aoc2）→ 直接落到 SavageWind 期望的最终位置 → 编译。
+- 硬约束：
+  1. 永不上游；永不提交 key/游戏文件；日志不打印任何密钥材料（禁 `-v/--showkeys`）。
+  2. 复用 SavageWind 既有机制：`plat_spawn/log_path/kill/wait`（platform.h:84）跑外部进程、进度条 Esc/B 取消（gamebuild 进程跟踪模式）、SDL 文件对话框带过滤器、`savagewind.ini` 持久化。
+  3. 跳过 `romfs_copy_tree`：更新 RomFS 直接解到最终位置（省一次 14GB 复制）。
+  4. AGENTS.md 惯例继续适用（这是 SavageWind 的代码库）。
+
 ---
 
-## 1. 鎬讳綋姝ラ璺嚎鍥?
-| # | 闃舵 | 鐘舵€?| 鍐呭 |
+## 1. 总体步骤路线图
+
+| # | 阶段 | 状态 | 内容 |
 |---|---|---|---|
-| 0 | 椤圭洰楠ㄦ灦 | 鉁?| 鍏嬮殕浠撳簱銆佸缓 `simplified` 鍒嗘敮銆乺emote=upstream 鎸囨湰鍦?|
-| 1 | nstool 鏋勫缓閫傞厤 | 鉁?| `<ws>\nstool`锛堝垎鏀?`simplified-build`锛夛紝浜х墿 `bin/nstool.exe`锛岃 搂3.1 |
-| 2 | CLI 瀹炴祴楠岃瘉 | 鉁?| 涓夌鍖呮ā寮?+ XCI + NSZ 缁撴瀯 + key 璇婃柇锛岃 搂3.3 |
-| 3 | `runtime/ncz.c` | 猬?| NCZ鈫扤CA 閲嶆瀯妯″潡锛坙ibzstd + AES-128-CTR锛夛紝瑙?搂3.5 绠楁硶 |
-| 4 | NCZ 鍗曞厓娴嬭瘯 | 猬?| 鈶犲悎鎴?NCZ 寰€杩旓紙staged NCA鈫掑悎鎴愨啋閲嶆瀯鈫掑瓧鑺傛瘮瀵癸級锛涒憽榛勯噾 E2E锛歚test/games/nsz/*.nsz` 閲嶆瀯鍚庝笌 `test/work/m1/u/94a679....nca` 瀛楄妭姣斿 |
-| 5 | 瑙ｅ寘椹卞姩 `runtime/nsp_extract.c` | 猬?| 闃舵鏈?A鈥揊 + 鍒ゅ瀷 + 棰勬 + 鍙栨秷锛岃 搂3.4/搂4 |
-| 6 | UI 闆嗘垚 | 猬?| setup 椤典笁琛岋紙鍖呭閫?prod.keys/title.keys锛夈€佸梾鎺㈡牎楠屻€乮ni 鎸佷箙鍖?|
-| 7 | i18n | 猬?| 13 璇█鏉＄洰 |
-| 8 | vendor + 鎵撳寘 | 猬?| nstool 杩?third_party銆丮akefile 鐩爣銆乣make dist` 闅?zig/ 妯″紡鎵撳寘 |
-| 9 | E2E 楠屾敹 | 猬?| 鐢?`test/games/` 涓夋ā寮?+ XCI + NSZ 鍏ㄦ祦绋嬭窇閫氾紱娓呯悊鏆傚瓨 |
+| 0 | 项目骨架 | ✅ | 克隆仓库、建 `simplified` 分支、remote=upstream 指本地 |
+| 1 | nstool 构建适配 | ✅ | `<ws>\nstool`（分支 `simplified-build`），产物 `bin/nstool.exe`，见 §3.1 |
+| 2 | CLI 实测验证 | ✅ | 三种包模式 + XCI + NSZ 结构 + key 诊断，见 §3.2/§3.5 |
+| 3 | `runtime/ncz.c` | ✅ | NCZ→NCA 重建模块（libzstd 1.5.7 + 计算式 AES-128-CTR），见 §3.4 |
+| 4 | NCZ 单元测试 | ✅ | 17 项合成检查 + 真实 NSZ 黄金验收（sha256 = 内容 ID），见 §3.4 |
+| 5 | 解包驱动 `runtime/nsp_extract.c` | ⬜ | 阶段 A–F + 判型 + 预检 + 取消，见 §3.3/§4 |
+| 6 | UI 集成 | ⬜ | setup 页三行（包多选/prod.keys/title.keys）、浏览校验、ini 持久化 |
+| 7 | i18n | ⬜ | 13 语言条目 |
+| 8 | vendor + 打包 | ⬜ | nstool 进 third_party、Makefile 目标、`make dist` 照 zig/ 模式打包 |
+| 9 | E2E 验收 | ⬜ | 用 `test/games/` 三模式 + XCI + NSZ 全流程跑通；清理暂存 |
 
-渚濊禆鍏崇郴锛?鈫?鈫?鈫?鈫?/8鈫?銆? 涓?5 鍙苟琛岃捣姝ワ紙5 鐨?nstool 璋冪敤灞備笉渚濊禆 3锛夈€?
+依赖关系：0→1→2→3→4→5（6/7/8 可并行）；5 的 nstool 调用层不依赖 3。
+
 ---
 
-## 2. 鍏抽敭浜嬪疄閫熸煡锛堥粍閲戝熀鍑嗗€硷級
+## 2. 关键事实速查（黄金基准值）
 
-| 椤?| 鍊?| 鏉ユ簮 |
+| 项 | 值 | 来源 |
 |---|---|---|
-| BOTW 搴旂敤 ID | `01007EF00011E000` | launcher.mm:505 |
-| 鏇存柊 TitleID / rights id | `01007EF00011E800`锛坱ik 鏂囦欢鍚嶅悗缂€ `...0003`锛?| A1 瀹炴祴 |
-| DLC1 / DLC2 | `01007EF00011F001` / `01007EF00011F002`锛坮ights id 鍚庣紑鍏?0锛?| A3 瀹炴祴 |
-| 1.9.0 build id锛坢ain 鍓?8 瀛楄妭锛?| `cd57b23fa4bbad65` | game_versions.h + A5 瀹炴祴涓€鑷?|
-| 1.9.0 鍚堝苟 RomFS | **41062 鏂囦欢 / 15,129,626,830 瀛楄妭**锛沗System/Version.txt` = "1.9.0"锛? 瀛楄妭鏃犳崲琛岋級 | game_versions.h + A6 瀹炴祴鍒嗘涓嶅樊 |
-| DLC1 RomFS | 7094 鏂囦欢 / 1326 MB锛沗System/AocVersion.txt` = "3.0" | A4 瀹炴祴锛圧EADME 绾?7000 鏂囦欢/1.4GB锛?|
-| DLC2 RomFS | 1 鏂囦欢 `System/AocVersion.txt` | A4 瀹炴祴 |
-| 鏈綋 program NCA 鍐呭 ID | `861707001401bbce36c7e421efac76d4`锛圢SP 涓?XCI 鐩稿悓 鈫?绛変环锛?| A2/B3 瀹炴祴 |
-| 鏇存柊 program NCA 鍐呭 ID | `94a679f15eb8b1a5ee59b8c284f71ae3`锛圢SP/NSZ 鐩稿悓锛?| A1/NSZ 瑙ｆ瀽 |
-| DLC NCA 鍐呭 ID | F001=`b201291d3e099872debd1c1870572cc3`锛孎002=`a6ee60de4f804ac979f18fb68ced5857` | A4 瀹炴祴 |
-| nstool 鐗堟湰 | v0.0.0锛坉evelopment-tip 绯伙級锛岄潤鎬?10.7MB | 鍐掔儫娴嬭瘯 |
+| BOTW 应用 ID | `01007EF00011E000` | launcher.mm:505 |
+| 更新 TitleID / rights id | `01007EF00011E800`（tik 文件名后缀 `...0003`） | A1 实测 |
+| DLC1 / DLC2 | `01007EF00011F001` / `01007EF00011F002`（rights id 后缀全 0） | A3 实测 |
+| 1.9.0 build id（main 前 8 字节） | `cd57b23fa4bbad65` | game_versions.h + A5 实测一致 |
+| 1.9.0 合并 RomFS | **41062 文件 / 15,129,626,830 字节**；`System/Version.txt` = "1.9.0"（5 字节无换行） | game_versions.h + A6 实测分毫不差 |
+| DLC1 RomFS | 7094 文件 / 1326 MB；`System/AocVersion.txt` = "3.0" | A4 实测（README 约 7000 文件/1.4GB） |
+| DLC2 RomFS | 1 文件 `System/AocVersion.txt` | A4 实测 |
+| 本体 program NCA 内容 ID | `861707001401bbce36c7e421efac76d4`（NSP 与 XCI 相同 → 等价） | A2/B3 实测 |
+| 更新 program NCA 内容 ID | `94a679f15eb8b1a5ee59b8c284f71ae3`（NSP/NSZ 相同） | A1/NSZ 解析 |
+| DLC NCA 内容 ID | F001=`b201291d3e099872debd1c1870572cc3`，F002=`a6ee60de4f804ac979f18fb68ced5857` | A4 实测 |
+| 更新 NCA 大小 | 0x3AE96C00 = 988,376,064 字节（sha256 = 内容 ID） | NSZ 解码实测 |
+| nstool 版本 | v0.0.0（development-tip 系），静态 10.7MB | 冒烟测试 |
 
-榛勯噾鏆傚瓨锛堥獙鏀跺悗娓呯悊锛夛細`test/work/m1/{b,u,exefs,romfs,d1,d2,xci}`銆乣test/work/{m2,m3}`銆佹棩蹇?`test/work/*.log`銆傚悎璁?~75GB銆?
+黄金暂存（验收后清理）：`test/work/m1/{b,u,exefs,romfs,d1,d2,xci}`、`test/work/{m2,m3}`、日志 `test/work/*.log`。合计 ~75GB。
+
 ---
 
-## 3. 宸插畬鎴愭敼杩涗笌瀹炵幇缁嗚妭
+## 3. 已完成改进与实现细节
 
-### 3.1 nstool 鏋勫缓閫傞厤锛坣stool 浠撳簱锛屽垎鏀?`simplified-build`锛?
-| 鎻愪氦 | 鍐呭 | 缁嗚妭/鏍瑰洜 |
+### 3.1 nstool 构建适配（nstool 仓库，分支 `simplified-build`）
+
+| 提交 | 内容 | 细节/根因 |
 |---|---|---|
-| `2236bb9` | `src/CnmtProcess.cpp:218` | 涓婃父 bug锛歚fmt::print("{:s}{:d}\n", i)` 涓や釜鍗犱綅绗︿竴涓弬鏁帮紝fmt v10 consteval 鎷掔紪 鈫?琛?`prefix, i` |
-| `0898c00` | makefile + `build_ucrt64.sh` | 鈶燙XXFLAGS `c++11`鈫抈c++20`锛坈++11 澶棫锛夛紱鈶IN32 閾炬帴鍔?`LINKFLAGS=-municode`锛歯stool 鍏ュ彛鏄?`UnicodeMain.h` 閲岀殑 **`wmain`**锛宮ingw 榛樿 ANSI 鍚姩妗╂壘涓嶅埌 `main` 鎵嶉€€鍥炴壘 `WinMain`鈥斺€斾笉鍔?`-municode` 蹇呮姤 `undefined reference to WinMain`锛涒憿涓€閿剼鏈?|
-| `4b03518` | `.gitattributes` | `*.sh text eol=lf` + 浠撳簱 `core.autocrlf=false`锛岄槻 CRLF 鐮村潖 bash 鑴氭湰 |
-| `3590b3d` | `Settings.cpp` | 瑙ｆ敞閲?`--titlekeyset`锛堜笂娓告敞閲婃帀浜嗭紝Settings.cpp:642锛夊苟琛ョ敤娉曟枃鏈€?*nsz/NSP 鎻愬彇鐨?keyset 涓昏矾寰?* |
+| `2236bb9` | `src/CnmtProcess.cpp:218` | 上游 bug：`fmt::print("{:s}{:d}\n", i)` 两个占位符一个参数，fmt v10 consteval 拒编 → 补 `prefix, i` |
+| `0898c00` | makefile + `build_ucrt64.sh` | ①CXXFLAGS `c++11`→`c++20`；②WIN32 链接加 `LINKFLAGS=-municode`：nstool 入口是 `UnicodeMain.h` 里的 **`wmain`**，mingw 默认 ANSI 启动桩找不到 `main` 才退回找 `WinMain`——不加 `-municode` 必报 `undefined reference to WinMain`；③一键脚本 |
+| `4b03518` | `.gitattributes` | `*.sh text eol=lf` + 仓库 `core.autocrlf=false`，防 CRLF 破坏 bash 脚本 |
+| `3590b3d` | `Settings.cpp` | 解注掉 `--titlekeyset`（上游注释掉了，Settings.cpp:642）并补用法文本。**nsz/NSP 提取的 keyset 主路径** |
 
-瀛愭ā鍧?`deps/libtoolchain`锛堝垎鏀?`simplified-build` @ `adeb4cd`锛夛細`src/cli/FormatUtil.cpp:84` 涓夊厓琛ㄨ揪寮忚繍琛屾椂鏍煎紡涓?鈫?if/else 鎷嗗垎锛坒mt v10 consteval锛夈€傜埗浠撳簱璇ユ寚閽堟樉绀?`M` 灞為鏈熴€?
-**鏋勫缓閰嶆柟**锛歚<ws>\nstool\build_ucrt64.sh`锛圡SYS2 UCRT64 gcc 15.2.0锛沗bash build_ucrt64.sh` 鍏ㄩ噺 clean 鏋勫缓锛屽凡楠岃瘉锛夈€傛敞鎰忥細deps 椤跺眰 foreach 鐢?`;` 鍒嗛殧锛?*瀛愭瀯寤哄け璐ヤ笉浼氫腑鏂摼**鈥斺€旀鏌?`deps/*/bin/*.a` 浜斾釜閮藉湪鎵嶇畻杩囥€?
-**pwsh鈫攂ash 澶囧繕**锛歱wsh 5.1 浼犲惈鍙屽紩鍙风殑瀛楃涓茬粰 `bash -lc '...'` 浼氳鎷嗗潖锛堝巻鍙插娆¤寮傚け璐ョ殑鏍规簮锛夆啋 bash 鍛戒护涓€寰嬪啓杩?.sh 鑴氭湰鏂囦欢鎵ц锛涜皟鍘熺敓 exe 闇€ `export MSYS2_ARG_CONV_EXCL='*'`锛堝惁鍒?`-x /0/` 琚敼鍐欐垚 `<msys2根（本机 D:\msys2）>\0`锛汼avageWind 鐢?C 鐩存帴 CreateProcess 鏃犳闂锛夈€?
-### 3.2 CLI 瀹炴祴鐭╅樀锛堝叏閮ㄩ€氳繃锛?
-| 娴嬭瘯 | 鍛戒护瑕佺偣 | 缁撴灉 |
+子模块 `deps/libtoolchain`（分支 `simplified-build` @ `adeb4cd`）：`src/cli/FormatUtil.cpp:84` 三元表达式运行时格式串 → if/else 拆分（fmt v10 consteval）。父仓库该指针显示 `M` 属预期。
+
+**构建配方**：`<ws>\nstool\build_ucrt64.sh`（MSYS2 UCRT64 gcc 15.2.0；`bash build_ucrt64.sh` 全量 clean 构建，已多次验证）。注意：deps 顶层 foreach 用 `;` 分隔，**子构建失败不会中断链**——检查 `deps/*/bin/*.a` 五个都在才算过。
+
+**pwsh→bash 备忘**：pwsh 5.1 传含双引号的字符串给 `bash -lc '...'` 会被拆坏（历史多次诡异失败的根源）→ bash 命令一律写进 `.sh` 脚本文件执行；调原生 exe 需 `export MSYS2_ARG_CONV_EXCL='*'`（否则 `-x /0/` 被改写成本机 MSYS2 安装路径下的 `\0`；SavageWind 用 C 直接 CreateProcess 无此问题）。
+
+### 3.2 CLI 实测矩阵（全部通过）
+
+| 测试 | 命令要点 | 结果 |
 |---|---|---|
-| 鏇存柊鍖呮祬鎻愬彇+鍒ゅ瀷 | `nstool -k prod.keys --titlekeyset t.keys -x <stage>/ <nsp>` 鍚庨€?NCA info | 琛ヤ竵 NCA锛歚Program` + ProgID **E000** + 鍒嗗尯 AesCtr/AesCtrEx |
-| 鏈綋鍖呭悓涓?| 鍚屼笂 | 鏈綋 NCA锛歚Program` + ProgID E000锛岀函 AesCtr锛?3.8GB |
-| DLC脳2 | 鍚屼笂 | `PublicData` + ProgID F001/F002锛汻omFS 鍦?*鍒嗗尯 0**锛堝崟鍒嗗尯锛?|
-| exefs 鎻愬彇 | `-x /0/ out/ <patch.nca>` | main(17.9MB)+npdm+rtld+sdk+subsdk0锛沗nstool main` 鈫?`ModuleId: cd57b23fa4bbad65...` 鉁?|
-| **BKTR 鍚堝苟** | `--basenca <base.nca> -x /1/ out/ <patch.nca>` | **41062 鏂囦欢/15,129,626,830 瀛楄妭**锛孷ersion.txt="1.9.0" 鉁?|
-| XCI | `-x <stage>/ <xci>` | secure 涓?4 NCA锛屾湰浣撳唴瀹?ID 涓?NSP 鐩稿悓 鈫?绛変环 |
-| NSZ 缁撴瀯 | 鐩存帴瑙ｆ瀽瀹瑰櫒 | 瑙?搂3.5 |
+| 更新包浅提取+判型 | `nstool -k prod.keys --titlekeyset t.keys -x <stage>/ <nsp>` 后逐个 NCA info | 补丁 NCA：`Program` + ProgID **E000** + 分区 AesCtr/AesCtrEx |
+| 本体包同上 | 同上 | 本体 NCA：`Program` + ProgID E000，纯 AesCtr，2.3GB |
+| DLC×2 | 同上 | `PublicData` + ProgID F001/F002；RomFS 在**分区 0**（单分区） |
+| exefs 提取 | `-x /0/ out/ <patch.nca>` | main(17.9MB)+npdm+rtld+sdk+subsdk0；`nstool main` → `ModuleId: cd57b23fa4bbad65...` ✅ |
+| **BKTR 合并** | `--basenca <base.nca> -x /1/ out/ <patch.nca>` | **41062 文件/15,129,626,830 字节**，Version.txt="1.9.0" ✅ |
+| XCI | `-x <stage>/ <xci>` | secure 下 4 NCA，本体内容 ID 与 NSP 相同 → 等价 |
+| NSZ 结构 | 直接解析容器 | 见 §3.4 |
 
-### 3.3 鍒ゅ瀷涓庢彁鍙栧畾绋胯鍒欙紙瀹炵幇鐓ф妱锛?
-```
-娴呮彁鍙栵細nstool -k prod.keys --titlekeyset title.keys -x <staging>/ <姣忎釜鍖?
-  鈫?NCA锛堝唴瀹?ID 鍛藉悕锛? .tik/.cert锛圢SP锛? secure 瀛愮洰褰曪紙XCI锛?鍒ゅ瀷锛坕nfo 杩愯锛屽彧闇€ nca_header_key锛涙棤 titlekey 浠?WARNING 涓嶅け璐ワ級锛?  Program + 鍒嗗尯1=AesCtrEx      鈫?鏇存柊锛堣ˉ涓侊級program NCA
-  Program + 鍏?AesCtr           鈫?鏈綋 program NCA锛堝悓 ProgID 涓庤ˉ涓侀厤瀵光€斺€斿疄娴?ProgID=搴旂敤ID锛?  PublicData + ProgID 鍓嶇紑鍖归厤  鈫?DLC锛堟寜 ProgID 鎺掑簭 鈫?aoc1/aoc2锛?  Meta / Control / Manual       鈫?璺宠繃锛圡eta 鐨?ProgID 鏄ˉ涓?TitleID E800锛屽嬁娣风敤锛?鎻愬彇锛堥渶 prod.keys + title.keys锛夛細
-  琛ヤ竵 NCA `-x /0/` 鈫?exefs/    锛圓esCtr锛屾棤闇€ base锛夆啋 绔嬪嵆楠?build id锛坒ail fast锛屽厛浜?14GB RomFS锛?  琛ヤ竵 NCA `-x /1/ --basenca <鏈綋>` 鈫?romfs/锛?瀹屾暣 1.9.0 鍚堝苟鏍戯級
-  DLC NCA  `-x /0/` 鈫?aoc1/ aoc2/锛堟敞鎰忓垎鍖虹储寮?0锛乸rogram 鎵嶆槸 1锛?```
-
-閰嶅瑙勫垯缁嗚妭锛氭暣鍚堝寘涓湰浣?琛ヤ竵 Program NCA 骞跺瓨锛堝悓 ProgID E000锛夛紝**闈?AesCtrEx 鍖哄垎**锛沶stool 瀵规棤 base 鐨勮ˉ涓佷細鎵?`[WARNING] NCA Partition 1 not readable. (Base NCA not supplied...)` 鈥斺€?杩欐潯璀﹀憡鏈韩鍙綔涓?杩欐槸琛ヤ竵"鐨勬梺璇併€?
-### 3.4 NSZ 鍒嗗潡 solid 鍙樹綋锛堝疄娴嬭В鐮?+ ncz.c 绠楁硶锛?
-`test/games/nsz/*.nsz` 瀹炴祴缁撴瀯锛堝唴瀹?ID `94a679f1...` 涓庡凡楠岃瘉琛ヤ竵 NCA 鐩稿悓锛夛細
+### 3.3 判型与提取定稿规则（实现照抄）
 
 ```
-[0x0000]  NCA 澶村師鏍?(0x4000)
-[0x4000]  b"NCZSECTN" + u64 count        鈫?鏈枃浠?count=534锛堝垎鍧楀彉浣擄紱缁忓吀鍙樹綋 count鈮?锛?[0x4010]  count 脳 64B 鏉＄洰锛?          offset u64 | size u64 | cryptoType u64 | pad u64 | cryptoKey[16] | cryptoCounter[16]
-          锛圢SCB compressor.py:300-319 鏉冨▉甯冨眬锛涘疄娴嬫潯鐩亸绉婚摼杩炵画瑕嗙洊鏁翠釜 NCA 浣擄級
-[0x10+count*64]  鍗曟潯 zstd solid 甯э紙28 B5 2F FD锛夊埌 EOF
+浅提取：nstool -k prod.keys --titlekeyset title.keys -x <staging>/ <每个包>
+  → NCA（内容 ID 命名）+ .tik/.cert（NSP）+ secure 子目录（XCI）
+判型（info 运行，只需 nca_header_key；无 titlekey 仅 WARNING 不失败）：
+  Program + 分区1=AesCtrEx       → 更新（补丁）program NCA
+  Program + 全 AesCtr            → 本体 program NCA（同 ProgID 与补丁配对）
+  PublicData + ProgID 前缀匹配   → DLC（按 ProgID 排序 → aoc1/aoc2）
+  Meta / Control / Manual        → 跳过（Meta 的 ProgID 是补丁 TitleID E800，易混用）
+提取（需 prod.keys + title.keys）：
+  补丁 NCA `-x /0/` → exefs/     （AesCtr，无需 base）→ 立即验 build id（fail fast，先于 14GB RomFS）
+  补丁 NCA `-x /1/ --basenca <本体>` → romfs/（完整 1.9.0 合并树）
+  DLC NCA  `-x /0/` → aoc1/ aoc2/（注意分区索引 0；program 才是 1）
 ```
 
-ncz.c 绠楁硶锛堢収 NSCB `decompressor.py` 閫氱敤瀹炵幇锛屽ぉ鐒跺吋瀹逛袱绉嶅彉浣擄級锛?1. 璇?0x4000 澶?鈫?鍘熸牱鍐欒緭鍑猴紱
-2. 璇?magic+count+鏉＄洰琛紱
-3. zstd 娴佸紡瑙ｅ帇鍓╀綑閮ㄥ垎杩藉姞鍒拌緭鍑猴紙娉ㄦ剰 libzstd `ZSTD_decompressStream` 甯х粨鏉熻繑鍥?0 鍚庤閲嶇疆鍐嶇画锛屽吋瀹瑰甯э級锛?4. 閫愭潯鐩師鍦伴噸鍔犲瘑锛歚cryptoType==1` 璺宠繃锛堟槑鏂囷級锛宍!=3` 鎶ラ敊锛堝彧鏀寔 CTR锛夛紝鍚﹀垯 AES-128-CTR 浠?`offset` 鍒?`offset+size`锛宑ounter 鏈夋晥鍊?= **counter 澶х u128 + (鏂囦欢鍋忕Щ >> 4)**锛坉ecompressor.py:35 `initial_value=(offset>>4)`锛夈€?5. 楠岃瘉鎵嬫锛氳緭鍑轰笌 `test/work/m1/u/94a679....nca` 瀛楄妭姣斿銆?
-鍙傝€冭鍙細NSC_BUILDER 涓?MIT锛坧y/ztools/lib/{decompressor,compressor}.py銆丗s/Nsp.py:637+锛夛紱**绂佺敤 GPL 鐨?nsz 宸ュ叿浠ｇ爜**銆傚潡琛ㄥ彉浣擄紙NCZBLOCK锛変笉鏀寔 鈫?鏄庣‘鎶ラ敊銆?
-### 3.5 Key 璇婃柇瑙勫垯锛堝疄娴?9 缁?keyset 瀹氭锛?
-**鏍瑰洜锛歵itle.keys 鐨?rights id 瑕嗙洊闈?*锛堝悇涓绘満鏈湴搴撲笉鍚岋級锛屼笌 master_key 浠ｆ鏃犲叧锛?
-| 鐗堟湰 | 鏉＄洰鏁?| e000 鏈綋 | e800 鏇存柊 | f001/f002 | 瀹炴祴 |
+配对规则细节：整合包中本体/补丁 Program NCA 并存（同 ProgID E000），**靠 AesCtrEx 区分**；nstool 对无 base 的补丁会打 `[WARNING] NCA Partition 1 not readable. (Base NCA not supplied...)` —— 这条警告本身可作"这是补丁"的旁证。分区 ≠ 顺序：更新 NCA 的分区表 [0]=exefs(28MB，文件尾部) 、[1]=romfs(960MB，从 0x4000 开始)。`/0/`、`/1/` 指 **fs 头索引**，不是分区表顺序。
+
+### 3.4 NCZ 格式与 ncz.c（实测解码 + 最终语义）
+
+`test/games/nsz/*.nsz` 实测结构（内容 ID `94a679f1...` 与已验证补丁 NCA 相同）：
+
+```
+[0x0000]  NCA 头原样 (0x4000)
+[0x4000]  b"NCZSECTN" + u64 count         → 本文件 count=534（分块变体；经典变体 count≤4）
+[0x4010]  count × 64B 条目：
+          offset u64 | size u64 | cryptoType u64 | pad u64 | cryptoKey[16] | cryptoCounter[16]
+          （权威布局：nsz-rs `format/ncz.rs` 与 NSCB compressor.py:300-319；实测条目偏移连续覆盖整个 NCA 体）
+[0x10+count*64]  单条 zstd solid 帧（28 B5 2F FD）到 EOF；块表变体则此处是 "NCZBLOCK"
+```
+
+实测统计：534 条目的 size 之和 = 0x3AE92C00，加 0x4000 = 0x3AE96C00（= NCA 大小，无缺口）；全部 cryptoType=3，**共用同一 key**；counter 仅 15 种，形如 `BE32(gen)||BE32(sec)||0^8`（如 `00000002 00000009`）。
+
+**最终语义（已验证，勿再改）**：
+1. 读 0x4000 头 → 原样写输出；
+2. 读 magic+count+条目表；随后 8 字节若是 `NCZBLOCK` **明确报错**（块表变体不支持）；
+3. zstd 流式解压剩余部分追加到输出（`ZSTD_decompressStream`；帧结束返回 0 后必须能继续处理后续帧）；
+4. 逐条目原地重加密：`cryptoType==1` 跳过；`3`/`4` 走 AES-128-CTR；其它报错。CTR 计数器块 = **条目 counter 前 8 字节作 prefix + 绝对文件块号（offset>>4）的大端 u64**。经典 NSCB 条目把 counter 存成 `nonce||0`（绝对块号从该段起点算出），分块变体存 gen/sec 对，同一公式两者通吃；
+5. 验收判据（nsz 工具自带）：**`sha256(重建 NCA)[0:32]` 必须等于 `.ncz` 文件名**（NCA 内容 ID = 整文件 sha256）。
+   实测：重建 988MB NCA 的 sha256 = `94a679f15eb8b1a5ee59b8c284f71ae3b6296755af60946cb145989615d10344`，与原始 NCA **字节完全一致** ✅
+
+**实现要点（runtime/ncz.c）**：
+- `third_party/zstd/zstddeclib.c`（zstd 1.5.7 解码合并源，BSD；`README.md` 记重新生成命令）。
+- AES-128 加密方向手写：S 盒由 GF(2^8) 逆元 + 仿射变换现算（**生成元必须用 3**），T 表加速；`bool (*NczProgress)(void*, uint64_t)` 回调支持取消；全部 64 位 seek（Windows `long` 32 位，必须 `_fseeki64`）。
+- 输出文件必须 `fopen(..., "wb+")`：原地重加密要读回自己写的段。
+
+**本轮踩过的坑（都已在代码/测试里固化）**：
+1. **S 盒逆元索引越界**：`gexp[255 - glog[i]]` 在 `glog[1]==0` 时索引 255（数组 0..254），读到垃圾 → `sbox[1]` 错成 0x63（应 0x7c）。FIPS-197 单向量恰好不含字节 0x01 而漏检 → 现已加第二个 NIST SP 800-38A 向量 + 黄金哈希双保险。
+2. **流式 zstd 截断保护误判**：帧正常完成后，再用空输入调一次 `ZSTD_decompressStream` 会返回"还需输入"(>0)，曾被当成截断。现用 `frame_done` 状态区分"帧完成"与"真截断"。
+3. **计数器语义反复**：曾误改成"段内相对块号"，导致 534 段全部错位；以 nsz 的 `crypto.seek(i)`（绝对偏移）为准。
+4. 合成夹具设计：截断测试必须在表内真截断（不能靠随后的帧字节凑够条目）；counter 低 64 位按真实文件写成 0。
+
+参考许可：NSC_BUILDER `py/ztools/lib/{decompressor,compressor}.py`、Fs/Nsp.py 为 MIT；nsz 工具为 GPL（**仅读其格式定义/语义，不抄代码**）；nsz-rs（MIT）的 `format/ncz.rs` 是布局旁证。
+
+### 3.5 Key 诊断规则（实测 9 组 keyset 定案）
+
+**根因：title.keys 的 rights id 覆盖面**（各主机本地库不同），与 master_key 代次无关。
+
+| 版本 | 条目数 | e000 本体 | e800 更新 | f001/f002 | 实测 |
 |---|---|---|---|---|---|
-| 16.1.0 / 17.0.0 | 288 | 鉁?| 鉁?| 鉁?| 鏈綋鎶ラ敊锛?鐢ㄦ埛鎵€瑙侊級锛屾洿鏂?DLC 濂?|
-| 18.0.0 | 986 | 鉁?| 鉁?| 鉁?| 鍏ㄥソ |
-| 18.1.0 / 19.0.0 | 18 | 鉁?| 鉁?| 鉁?| DLC 鎶ラ敊 |
-| 20.2.0 | 6 | 鉁?| 鉁?| 鉁?| 鍏ㄦ姤閿?|
-| 21.1.0 | 169 | 鉁?| 鉁?| 鉁?| 鏈綋鎶ラ敊 |
-| 22.5.0 | 19 | 鉁?| 鉁?| 鉁?| 鍏ㄦ姤閿?|
-| example | 179 | 鉁?| 鉁?| 鉁?| 鍏ㄥソ |
+| 16.1.0 / 17.0.0 | 288 | ✅ | ✅ | ✅ | 本体报错（≠用户所见），更新 DLC 好 |
+| 18.0.0 | 986 | ✅ | ✅ | ✅ | 全好 |
+| 18.1.0 / 19.0.0 | 18 | ✅ | ✅ | ✅ | DLC 报错 |
+| 20.2.0 | 6 | ✅ | ✅ | ✅ | 全报错 |
+| 21.1.0 | 169 | ✅ | ✅ | ✅ | 本体报错 |
+| 22.5.0 | 19 | ✅ | ✅ | ✅ | 全报错 |
+| example | 179 | ✅ | ✅ | ✅ | 全好 |
 
-- 澶辫触褰㈡€侊細`[WARNING] NCA Partition 0 not readable. (AES-CTR Key was not determined)`锛圓7 鐭╅樀瀹炴祴澶嶇幇锛夈€?- prod.keys锛欱OTW 鍏ㄨ蛋 titlekey 璺緞 鈫?master_key 鏁伴噺锛?7鈫?3锛夋棤鍏筹紱`nca_header_key` 缂哄け鍙敱 `nca_header_kek_source`+`nca_header_key_source`+`master_key_00` 娲剧敓锛坣stool 鑷姩锛夈€?- **椹卞姩璁捐淇**锛氬垽鍨嬶紙鍙渶 header key锛夆啋 璇诲嚭 rights id 鈫?**鍏堟牳瀵?title.keys 瑕嗙洊**鍐嶅惎鍔ㄩ暱鎻愬彇锛涚己澶卞垯鎶?title.keys 缂哄皯 XXX 鐨勮В瀵嗘潯鐩?骞跺垪鍑虹己鐨?id銆傚鐢ㄨ矾寰勶細nstool `--tik <绁ㄦ枃浠?`锛圢SP 鑷甫 tik/cert锛岄殢娴呮彁鍙栬惤鐩橈級銆?
+- 失败形态：`[WARNING] NCA Partition 0 not readable. (AES-CTR Key was not determined)`（A7 矩阵实测复现）。
+- prod.keys：BOTW 全走 titlekey 路径 → master_key 数量（17→23）无关；`nca_header_key` 缺失可由 `nca_header_kek_source`+`nca_header_key_source`+`master_key_00` 派生（nstool 自动）。
+- **驱动设计修正**：判型（只需 header key）→ 读出 rights id → **先核对 title.keys 覆盖**再启动长提取；缺失则报 `title.keys 缺少 XXX 的解密条目` 并列出缺的 id。备用路径：nstool `--tik <票文件>`（NSP 自带 tik/cert，随浅提取落盘）。
+
 ---
 
-## 4. 瑙ｅ寘椹卞姩璁捐瑕佺偣锛堝疄鐜板墠鐨勫畾绋匡級
+## 4. 解包驱动设计要点（实现前的定稿）
 
-- 闃舵鏈猴細A 娴呮彁鍙栧叏閮ㄥ寘 鈫?B 鍒ゅ瀷鍒嗙被 鈫?C 瀵嗛挜棰勬 鈫?D exefs 鎻愬彇 + build id fail-fast锛?.9.0 涓嶅湪琛?鈫?鏄庣‘鎶ョ増鏈級鈫?E romfs/aoc 鎻愬彇锛堢洿鎺ヨ惤鏈€缁堜綅缃級鈫?F 娓呯悊 staging銆?- 鍙栨秷锛歱lat_spawn 璧风殑 nstool 杩涚▼绾冲叆 gamebuild 鍚屾璺熻釜锛孍sc/B 鈫?kill 杩涚▼鏍?鈫?鍒?staging銆?- 杩涘害锛歯stool 鏃犺繘搴﹁緭鍑猴紙`Saving ...` 琛屾湁鏂囦欢鍚嶏級鈫?鎸夊凡鎻愬彇瀛楄妭/棰勪及鎬婚噺杩戜技锛涢樁娈甸棿鍒锋柊鏂囨銆?- 澶辫触鍗冲仠锛坒ail fast锛? 宸插垹 staging锛涢敊璇爜杩?i18n銆?- Windows 闀胯矾寰勶細staging 鏀?data 鏍逛笅鐭悕鐩綍锛堝 `<data>/sw_cache/`锛夛紝閬垮厤璺緞瓒呴暱銆?- GAME_FILES[] 鍏佽鍚嶅崟鏂板瑙ｅ寘浜х墿鏉＄洰 + `.gitignore`銆?
+- 阶段链：A 浅提取全部包 → B 判型分类 → C 密钥预检 → D exefs 提取 + build id fail-fast（1.9.0 不在表 → 明确报版本）→ E romfs/aoc 提取（直接落最终位置）→ F 清理 staging。
+- 取消：plat_spawn 起的 nstool 进程纳入 gamebuild 同款跟踪，Esc/B → kill 进程树 → 删 staging。
+- 进度：nstool 无进度输出（`Saving ...` 行有文件名）→ 按已提取字节/预估总量近似；阶段间刷新文案。
+- 失败即停（fail fast）：已删 staging；错误码进 i18n。
+- Windows 长路径：staging 放 data 根下短名目录（如 `<data>/sw_cache/`），避免路径超长。
+- GAME_FILES[] 允许名单新增解包产物条目 + `.gitignore`。
+- NSZ/XCZ：`.ncz` 条目在浅提取后由 `ncz_rebuild` 还原成 `.nca` 再走判型；staging 需预留 ~NCA 大小的额外空间（单个 988MB）。
+
 ---
 
-## 5. 宸茬煡绾︽潫涓庨闄╂竻鍗?
-1. 涓婃父绛栫暐锛堟案涓嶄笂娓搞€佹棩蹇楁棤瀵嗛挜锛夆€斺€旇 搂0銆?2. nstool 琛屼负锛氳鍛婇潪鑷村懡锛沬nfo 闃舵琛ヤ竵 NCA 蹇呮湁涓€鏉?base 璀﹀憡锛堝嬁褰撻敊璇級锛汼parse Storage 涓嶆敮鎸侊紙BOTW 涓嶅彈褰卞搷锛夛紱`--titlekeyset` 涓嶄紶鍒欏洖钀?`$HOME/.switch/`锛圵indows 涓?= `%USERPROFILE%\.switch`锛屽嬁渚濊禆锛夈€?3. nstool 鏃犺繘搴﹁緭鍑猴紱鏃?`--quiet`锛涢敊璇€氳繃闈為浂閫€鍑虹爜浼犻€掋€?4. NCZ锛氫粎 solid锛堝惈鍒嗗潡 solid锛夛紱鍧楄〃鍙樹綋鏄庣‘鎷掔粷锛汫PL nsz 宸ュ叿浠ｇ爜绂佺敤銆?5. fmt v10 consteval锛歯stool 鍏ㄩ噺閲嶅缓鏃朵笁澶勮ˉ涓佺己涓€涓嶅彲锛埪?.1锛夈€?6. 鏁村悎鍖呭弻 Program NCA 闈?AesCtrEx 鍖哄垎锛汳eta ProgID 鏄ˉ涓?TitleID锛屽嬁鐢ㄤ綔閰嶅閿€?7. 娴嬭瘯鑴氭湰涓撴湁锛歁SYS2 鍙傛暟杞崲銆乸wsh 寮曞彿銆丆RLF锛埪?.1 澶囧繕锛夆€斺€斾笉褰卞搷 SavageWind 鏈綋锛圕reateProcess锛夈€?
+## 5. 已知约束与风险清单
+
+1. 上游策略（永不上游、日志无密钥）——见 §0。
+2. nstool 行为：警告非致命；info 阶段补丁 NCA 必有一条 base 警告（勿当错误）；Sparse Storage 不支持（BOTW 不受影响）；`--titlekeyset` 不传则回落到 `$HOME/.switch/`（Windows = `%USERPROFILE%\.switch`，勿依赖）。
+3. nstool 无进度输出；无 `--quiet`；错误通过非零退出码传递。
+4. NCZ：仅 solid（含分块 solid）；块表变体明确拒绝；GPL nsz 工具代码禁用。
+5. fmt v10 consteval：nstool 全量重建时三处补丁缺一不可（§3.1）。
+6. 整合包双 Program NCA 非 AesCtrEx 区分；Meta ProgID 是补丁 TitleID，勿用配对键。
+7. 测试脚本专有：MSYS2 参数转换、pwsh 引号、CRLF（§3.1 备忘）——不影响 SavageWind 本体（CreateProcess）。
+8. `docs/PROGRESS-SIMPLIFIED.md` 曾因编码转换损坏（UTF-8 被按 GBK 二次编码）；2026-11-10 已重写为干净 UTF-8，后续编辑请保持 UTF-8。
+
 ---
 
-## 6. 鏁呴殰閫熸煡琛紙鐥囩姸 鈫?鏍瑰洜 鈫?绔犺妭锛?
-| 鐥囩姸 | 鏈€鍙兘鏍瑰洜 | 绔犺妭 |
+## 6. 故障速查表
+
+| 症状 | 最可能根因 | 章节 |
 |---|---|---|
-| `Partition X not readable. (AES-CTR Key was not determined)` | title.keys 缂鸿 rights id 鏉＄洰锛坘eyset 瑕嗙洊闈級 | 搂3.5 |
-| `undefined reference to WinMain` | 閲嶇紪 nstool 灏戜簡 `-municode` | 搂3.1 |
-| fmt consteval 缂栬瘧閿欒 | 涓夊 fmt v10 琛ヤ竵缂轰竴 | 搂3.1 |
-| NCZ 閲嶆瀯鍚庡搱甯屼笉绗?| 鏉＄洰甯冨眬璇婚敊锛?4B锛侊級鎴?counter 鏁板閿欙紙澶х u128 + off>>4锛?| 搂3.4 |
-| zstd 娴佷腑閫斿け璐?| 甯х粨鏉熷悗鏈噸缃?ZSTD_decompressStream锛堝甯у吋瀹癸級 | 搂3.4 |
-| 琛ヤ竵 RomFS 鎻愬彇鎶?base 缂哄け | 蹇樹簡 `--basenca` | 搂3.3 |
-| DLC 鎻愬彇涓虹┖/鍙湁 AocVersion | 鐢ㄩ敊鍒嗗尯绱㈠紩锛圖LC 鏄?/0/ 涓嶆槸 /1/锛?| 搂3.2/3.3 |
-| 鏈綋/琛ヤ竵鍒嗕笉娓?| 娌＄敤 AesCtrEx 鍒ゅ埆锛岃鐢?Meta 鐨?ProgID | 搂3.3 |
-| MSYS2 娴嬭瘯鑴氭湰鍙傛暟鎬紓 | ARG_CONV_EXCL / pwsh 寮曞彿 / CRLF | 搂3.1 |
-| 鍚堝苟 RomFS 鏁扮洰瀵逛笉涓?41062 | base/patch 鍐呭 ID 涓嶉厤瀵癸紙涓嶅悓鐗堟湰娣峰寘锛?| 搂2 |
+| `Partition X not readable. (AES-CTR Key was not determined)` | title.keys 缺该 rights id 条目（keyset 覆盖面） | §3.5 |
+| `undefined reference to WinMain` | 重编 nstool 少了 `-municode` | §3.1 |
+| fmt consteval 编译错误 | 三处 fmt v10 补丁缺一 | §3.1 |
+| NCZ 重建后哈希不符 | ①条目布局读错（64B）；②CTR 块号不是绝对 `offset>>4`；③**AES 实现本身有错**（用两个已知答案向量核对） | §3.4 |
+| AES 已知答案通过但重建仍错 | S 盒个别字节错（如 `sbox[1]`），单向量覆盖不到 → 换多种 key/块验证 | §3.4 坑 1 |
+| zstd 流中途失败 | 帧结束后未继续处理后续帧；或截断保护误报 | §3.4 坑 2 |
+| `NCZ_E_IO` 且哈希/大小可疑 | 输出文件用了 `"wb"`（只写）却要读回重加密 | §3.4 |
+| 补丁 RomFS 提取报 base 缺失 | 忘了 `--basenca` | §3.3 |
+| DLC 提取为空/只有 AocVersion | 用错分区索引（DLC 是 `/0/` 不是 `/1/`） | §3.2/§3.3 |
+| 本体/补丁分不清 | 没用 AesCtrEx 判别，误用 Meta 的 ProgID | §3.3 |
+| MSYS2 测试脚本参数怪异 | ARG_CONV_EXCL / pwsh 引号 / CRLF | §3.1 |
+| 合并 RomFS 数目对不上 41062 | base/patch 内容 ID 不配对（不同版本混包） | §2 |
 
 ---
 
-## 7. 鍙樻洿璁板綍
+## 7. 变更记录
 
-| 鏃ユ湡 | 浜嬮」 |
+| 日期 | 事项 |
 |---|---|
-| 2026-11-10 鍓?| 椤圭洰鍏嬮殕锛沶stool 浜斾緷璧栨瀯寤猴紱fmt脳2 淇锛?236bb9 / adeb4cd锛?|
-| 2026-11-10 | makefile 閫傞厤+鏋勫缓鑴氭湰锛?898c00锛夛紱gitattributes锛?b03518锛夛紱`--titlekeyset` 鍚敤锛?590b3d锛夛紱`bin/nstool.exe` 浜у嚭 |
-| 2026-11-10 | CLI 瀹炴祴鏀跺畼锛歂SP 涓夋ā寮忋€乣--basenca` 鍚堝苟瀵硅处銆丏LC銆乆CI 绛変环銆丯SZ 鍒嗗潡鍙樹綋瑙ｇ爜銆? 缁?key 璇婃柇锛圓1鈥揂7/B1鈥揃3锛?|
-| 2026-11-10 | 鏈枃妗ｅ缓绔?|
+| 2026-11-10 前 | 项目克隆；nstool 五依赖构建；fmt×2 修复（2236bb9 / adeb4cd） |
+| 2026-11-10 | makefile 适配+构建脚本（0898c00）；gitattributes（4b03518）；`--titlekeyset` 启用（3590b3d）；`bin/nstool.exe` 产出 |
+| 2026-11-10 | CLI 实测收官：NSP 三模式、`--basenca` 合并对账、DLC、XCI 等价、NSZ 分块变体解码、9 组 key 诊断（A1–A7/B1–B3） |
+| 2026-11-10 | 本文档建站 |
+| 2026-11-10 | §3/§4 步骤完成：`third_party/zstd/` vendor（1.5.7 解码合并源）、`runtime/ncz.c/.h`、`tools/test_ncz.c`、`make test-ncz`。合成 17 项全绿；真实 988MB NSZ 条目重建后 sha256 = `94a679f1…`，与原始 NCA 字节一致（黄金验收 ✅）。修三个实现级 bug：S 盒越界、输出 `wb+`、zstd 截断误判 |
+| 2026-11-10 | 修复本文档双重编码损坏（重写为干净 UTF-8），并补 §3.4 最终语义、§5.8 编码约束、§6 新故障行 |
