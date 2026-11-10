@@ -320,6 +320,9 @@ enum {
     FAIL_NOT_YET, FAIL_ROMFS
 };
 static void set_romfs_failure(const GameVersion &v, const std::string &found);
+// The game code build's own last reason (runtime/gamebuild.c: "the game code builder is missing from this copy of
+// Savage Wind", "didn't compile", ...): shown under FAIL_BUILD's hint, so what failed is not left to guessing
+static std::string g_fail_detail;
 static void set_failure(int k) {
     static const char *const head[] = {"", "No game files found in that folder", "Those files can't be used",
                                        "Setup didn't finish", "The game's main module can't be read", "Game files incomplete",
@@ -335,7 +338,10 @@ static void set_failure(int k) {
         "Savage Wind needs the game updated to version %s: the %s ExeFS and the RomFS with the update merged "
         "in. Update the game on your console, extract it again and choose that folder.",
         "Savage Wind plays version %s for now. If you kept a copy of the game at that version, choose its folder."};
-    if (k >= 1 && k <= 8) set_job(head[k], true, hint[k]);
+    if (k >= 1 && k <= 8) {
+        if (k != FAIL_BUILD || g_fail_detail.empty()) set_job(head[k], true, hint[k]);
+        else set_job(head[k], true, g_fail_detail + " " + trv(hint[k]));  // (the hint is looked up as it was translated)
+    }
     if (k == FAIL_ROMFS) {  // (screenshots: a cartridge's RomFS)
         char found[200];
         snprintf(found, sizeof found, tr("Its System/Version.txt says %s."), "1.0.0");
@@ -435,9 +441,11 @@ static bool build_game_code(void) {
     GameBuildOpts o = {build_progress, cores < ram_gb - 2 ? cores : ram_gb - 2 > 1 ? ram_gb - 2 : 1};
     char why[256] = "";
     g_build_frac = 0;
+    g_fail_detail.clear();
     bool ok = gamebuild_run(g_root.c_str(), &o, why, sizeof why);
     if (!ok) {
         fprintf(stderr, "[launcher] game code: %s\n", why);
+        g_fail_detail = why;
         set_failure(FAIL_BUILD);
     }
     return ok;

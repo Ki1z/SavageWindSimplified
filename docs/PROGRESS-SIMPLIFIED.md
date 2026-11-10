@@ -31,7 +31,7 @@
 | 6 | UI 集成 | ✅ | setup 页"从游戏包"分区（包多选/prod.keys/title.keys + Set up from packages）、ini 持久化、Esc/B 取消、NSPE_* 失败文案映射；clang 语法检查 + 51/17 回归全绿，见 §3.7 |
 | 7 | i18n | ✅ | 38 新键（36 译 + prod.keys/title.keys 保留英文名）+ 8 驱动步骤名，13 语言全补；旧迎宾键移除；`python tools/i18n_check.py` 13 语言 0 缺失（exit 0） |
 | 8 | vendor + 打包 | ✅ | 不入库二进制，走兄弟 checkout 构建模式（同 zig/FSR 的 fetch 模式）：`make build/nstool/nstool.exe` 增量构建 + `make dist` 打包 `nstool/nstool.exe` + MIT LICENSE + README 组件行；包内 `--titlekeyset` 已验证可用；见 §3.8 |
-| 9 | E2E 验收 | ⬜ | 范围收窄为 **NSP 三模式**（本体/更新/DLC，用户实测环境无 XCI/NSZ dump；XCI 等价与 NSZ NCZ 重建已有 CLI 级验收，UI 层由其他测试者反馈）；等用户提供 dumps 后跑通并清理暂存，见 §3.9 |
+| 9 | E2E 验收 | ✅ | 真实 dump：本体+更新整合包 + DLC1 + DLC2(空壳) ⇒ 提取 48,162 文件/15.41GB + aoc1 7,094/1.29GB；生成器+编译（clang）→ swgame.dll 227MB → 启动进世界 60fps（125,144+13,936+40,516 函数，160 sites）。XCI/NSZ 由其他测试者反馈。见 §3.10 |
 
 依赖关系：0→1→2→3→4→5（6/7/8 可并行）；5 的 nstool 调用层不依赖 3。
 
@@ -245,6 +245,14 @@
 - **冒烟验证**：`SAVAGEWIND_LAUNCHER_SHOT=<帧>:setup` + `SAVAGEWIND_SHOT_PATH=<绝对路径>` 可无头截图 setup 页（相对路径以数据根为基准，会落到 `build/build/`）。实测截图确认："从游戏包"分区（游戏包 / PROD.KEYS / TITLE.KEYS 三选择器 + 置灰的"从游戏包设置"）+ zh-Hans 文案全部正确渲染。
 - **本地数据根**：直接 `cd build && ./savagewind.exe` 会把 build/ 当数据根（生成 extracted/、sw_cache/ 等）；E2E 用独立目录启动。
 
+### 3.10 真实 dump E2E 结果（2026-11-10，NSP 三模式）
+
+- **输入**（用户自备 dump）：本体+更新整合包 `[01007EF00011E000][v1114112] (1G+1U).nsp` 15.47GB + DLC1 `[01007EF00011F001][v196608].nsp` 1.39GB + DLC2 `[01007EF00011F002][v196608].nsp` 0.12MB（空壳，内容仅 `System/AocVersion.txt`）。
+- **提取产物**：`extracted/` = 48,162 files / 15.41GB（romfs+exefs）；`aoc1` = 7,094 files / 1.29GB；`aoc2` = 1 file。DLC 检查 ready（aoc1+aoc2, version "3.0"）。
+- **游戏代码**：生成器（venv python + tools/gen.py）+ clang 编译，407s（559/1059 片段命中 cache/gamecode）→ `swgame.dll` 227,978,935 B，`.id` = `dcb63f3167a4a698`（与 exe 内置 GAMELIB_ID 一致）。
+- **启动验证**：`[gamelib] extracted/swgame.dll (game version 1.9.0, 160 sites)`；main 125,144 + subsdk0 13,936 + sdk 40,516 函数；台地 warp 后 60.0 fps、~400k draws/2s。
+- **编译器缺失的坑**：Windows 上 `find_tools` 只认 `SAVAGEWIND_CC` → `zig/zig.exe`，**无 clang 回退**（该回退仅 `#ifndef _WIN32`）；开发布局必须设 `SAVAGEWIND_CC=<clang>` 或放置 `zig/`（`tools/fetch_zig.sh`）。否则 `build_game_code()` 立即失败，界面显示 FAIL_BUILD 的通用文案（"请确保有足够的可用空间…"），极易误导——已修：FAIL_BUILD 现在把 `gamebuild_run` 的 `why`（如 "the game code builder is missing from this copy of Savage Wind"）前置到提示里（launcher.mm `g_fail_detail`）。
+
 
 ## 7. 变更记录
 
@@ -261,3 +269,4 @@
 | 2026-11-10 | §7 步骤完成：38 个新键 × 13 语言（de es fr he it ja ko nl pt ru th zh-Hans zh-Hant）+ 8 个驱动步骤名入表；SDL 文件对话框过滤器说明走 tr()、扩展名模式 `// i18n-skip`；旧迎宾键全表移除；`tools/i18n_check.py` 全语言 0 缺失（exit 0；8 个驱动步骤名因扫描器不读 nsp_extract.c 显示 unused，属预期） |
 | 2026-11-10 | §8 步骤完成：`$(B)/nstool/nstool.exe` 目标（兄弟 checkout 增量构建，不提交二进制）+ dist 打包 `nstool/nstool.exe` + MIT LICENSE + README 组件行；包内 `--titlekeyset` 验证可用（§3.8） |
 | 2026-11-10 | 步骤 9 前置完成：本机 app 全量构建打通（clang + `deps/` 前缀），修 `$(EXE)` 缺 zstddeclib.o 的链接 bug；`make deps-windows` 的 LGPL ffmpeg 就位；SDL3 换 UCRT64 版后 Vulkan 加载正常；setup 页无头截图实测通过（见 §3.9） |
+| 2026-11-10 | **步骤 9 E2E 通过**：真实 NSP 三模式（整合包+DLC1+空壳 DLC2）→ 提取 48,162 文件 + aoc1 7,094 文件 → 生成器+clang → swgame.dll 227MB → 进世界 60fps。同时修 FAIL_BUILD 提示缺真实原因的问题（`g_fail_detail` 前置），见 §3.10 |
