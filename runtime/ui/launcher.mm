@@ -2061,7 +2061,8 @@ extern "C" void launcher_run(const char *root, int mode) {
                                                "them into its copy; the packages themselves aren't changed.");
                         if (pk) pk_d += std::string("\n\n") + tr("Chosen:") + "\n" + pk_list;
                         if (opt_action("Game packages", pk_v.c_str(), pk_d.c_str(), true)) {
-                            SDL_DialogFileFilter filters[] = {{"Game packages", "nsp;xci;nsz;xcz"}};
+                            SDL_DialogFileFilter filters[] = {{tr("Game packages"),  // (the OS dialog's file type)
+                                                               "nsp;xci;nsz;xcz"}};  // i18n-skip (extensions, not shown)
                             SDL_ShowOpenFileDialog(picked_packages, NULL, win, filters, 1, NULL, true);
                         }
                         if (pk) check_left_of_value(pk_v);
@@ -2070,7 +2071,8 @@ extern "C" void launcher_run(const char *root, int mode) {
                                                "decrypt, it is never copied anywhere or shown.");
                         if (pr) pr_d += std::string("\n\n") + tr("Chosen:") + " " + g_settings.setup_prod_keys;
                         if (opt_action("prod.keys", pr_v.c_str(), pr_d.c_str(), true)) {
-                            SDL_DialogFileFilter filters[] = {{"Keys files", "keys"}};
+                            SDL_DialogFileFilter filters[] = {{tr("Keys files"),  // (the OS dialog's file type)
+                                                               "keys"}};  // i18n-skip
                             SDL_ShowOpenFileDialog(picked_keys, &g_prod_pick, win, filters, 1, NULL, false);
                         }
                         if (pr) check_left_of_value(pr_v);
@@ -2080,7 +2082,8 @@ extern "C" void launcher_run(const char *root, int mode) {
                                                "doesn't need this file.");
                         if (ti) ti_d += std::string("\n\n") + tr("Chosen:") + " " + g_settings.setup_title_keys;
                         if (opt_action("title.keys", ti_v.c_str(), ti_d.c_str(), true)) {
-                            SDL_DialogFileFilter filters[] = {{"Keys files", "keys"}};
+                            SDL_DialogFileFilter filters[] = {{tr("Keys files"),  // (the OS dialog's file type)
+                                                               "keys"}};  // i18n-skip
                             SDL_ShowOpenFileDialog(picked_keys, &g_title_pick, win, filters, 1, NULL, false);
                         }
                         if (ti) check_left_of_value(ti_v);

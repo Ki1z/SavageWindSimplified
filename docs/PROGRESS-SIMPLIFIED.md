@@ -29,7 +29,7 @@
 | 4 | NCZ 单元测试 | ✅ | 17 项合成检查 + 真实 NSZ 黄金验收（sha256 = 内容 ID），见 §3.4 |
 | 5 | 解包驱动 `runtime/nsp_extract.c` | ✅ | 阶段 A–F + 判型 + 预检 + 取消；合成测试 51 项全绿（stub nstool 全流程），见 §3.6/§4 |
 | 6 | UI 集成 | ✅ | setup 页"从游戏包"分区（包多选/prod.keys/title.keys + Set up from packages）、ini 持久化、Esc/B 取消、NSPE_* 失败文案映射；clang 语法检查 + 51/17 回归全绿，见 §3.7 |
-| 7 | i18n | ⬜ | 13 语言条目 |
+| 7 | i18n | ✅ | 38 新键（36 译 + prod.keys/title.keys 保留英文名）+ 8 驱动步骤名，13 语言全补；旧迎宾键移除；`python tools/i18n_check.py` 13 语言 0 缺失（exit 0） |
 | 8 | vendor + 打包 | ⬜ | nstool 进 third_party、Makefile 目标、`make dist` 照 zig/ 模式打包 |
 | 9 | E2E 验收 | ⬜ | 用 `test/games/` 三模式 + XCI + NSZ 全流程跑通；清理暂存 |
 
@@ -242,3 +242,4 @@
 | 2026-11-10 | 修复本文档双重编码损坏（重写为干净 UTF-8），并补 §3.4 最终语义、§5.8 编码约束、§6 新故障行 |
 | 2026-11-10 | §5 步骤完成：`runtime/nsp_extract.c/.h`（A–F 全链路 + NSPE_* 错误码）+ `runtime/aes128.{c,h}`（共享 AES-128 双向）+ `make test-nsp-extract`（51 项合成，stub nstool 全流程）+ XTS 已知答案向量 `tools/test_xts_vector.inc`。NCA 头偏移实测定稿（字段区 0x200，见 §3.6）；ncz 17 项 + 黄金回归全绿 |
 | 2026-11-10 | §6 步骤完成：launcher.mm"从游戏包"setup 分区 + settings 三键持久化 + Esc/B 取消 + NSPE_* 失败文案映射（§3.7）；驱动 TITLEKEYS 的 why 改为纯 id 列表；clang 工具链 + `deps/` 前缀就绪（`clang++ -fsyntax-only` launcher.mm 通过；clang 下 nsp-extract 51 + ncz 17 回归全绿） |
+| 2026-11-10 | §7 步骤完成：38 个新键 × 13 语言（de es fr he it ja ko nl pt ru th zh-Hans zh-Hant）+ 8 个驱动步骤名入表；SDL 文件对话框过滤器说明走 tr()、扩展名模式 `// i18n-skip`；旧迎宾键全表移除；`tools/i18n_check.py` 全语言 0 缺失（exit 0；8 个驱动步骤名因扫描器不读 nsp_extract.c 显示 unused，属预期） |
