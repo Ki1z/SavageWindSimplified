@@ -42,7 +42,7 @@ NczError ncz_rebuild(const char *ncz_path, const char *nca_out_path, NczProgress
 // Log tag for an error ("ok", "open", "short", ...).
 const char *ncz_error_name(NczError e);
 
-// Test hook: one raw AES-128 block (FIPS-197 vectors checked in tools/test_ncz.c).
+// Test hook: one raw AES-128 block (runtime/aes128.c; the known-answer vectors in tools/test_ncz.c).
 void ncz_aes128_block(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]);
 
 #ifdef __cplusplus

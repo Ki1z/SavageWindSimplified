@@ -27,7 +27,7 @@
 | 2 | CLI 实测验证 | ✅ | 三种包模式 + XCI + NSZ 结构 + key 诊断，见 §3.2/§3.5 |
 | 3 | `runtime/ncz.c` | ✅ | NCZ→NCA 重建模块（libzstd 1.5.7 + 计算式 AES-128-CTR），见 §3.4 |
 | 4 | NCZ 单元测试 | ✅ | 17 项合成检查 + 真实 NSZ 黄金验收（sha256 = 内容 ID），见 §3.4 |
-| 5 | 解包驱动 `runtime/nsp_extract.c` | ⬜ | 阶段 A–F + 判型 + 预检 + 取消，见 §3.3/§4 |
+| 5 | 解包驱动 `runtime/nsp_extract.c` | ✅ | 阶段 A–F + 判型 + 预检 + 取消；合成测试 51 项全绿（stub nstool 全流程），见 §3.6/§4 |
 | 6 | UI 集成 | ⬜ | setup 页三行（包多选/prod.keys/title.keys）、浏览校验、ini 持久化 |
 | 7 | i18n | ⬜ | 13 语言条目 |
 | 8 | vendor + 打包 | ⬜ | nstool 进 third_party、Makefile 目标、`make dist` 照 zig/ 模式打包 |
@@ -161,6 +161,20 @@
 
 ---
 
+### 3.6 解包驱动实现（`runtime/nsp_extract.c/.h`，2026-11-10）
+
+- 模块边界：不依赖 paths.c/platform 实现——`remove_game_files` 由调用方注入（UI 传 `rt_remove_game_files`），nstool 路径由调用方解析（NULL = 只认 `SAVAGEWIND_NSTOOL` 环境变量，开发者指向 `<ws>\nstool\bin\nstool.exe`）；平台函数仅 plat_spawn/wait/kill/remove_tree + plat_now_ns/wait_until_ns。测试链接零平台实现（stub 全套 + stub nstool 写出假产物），51 项全绿。
+- AES 拆分：`runtime/aes128.{c,h}` 共享 AES-128（FIPS C.1 + NIST SP 800-38A 双向量锁定双向）；ncz.c 改为调用方（`ncz_aes128_block` 保持测试钩子），ncz 17 项 + 黄金回归全绿。
+- NCA 头解析实测定稿（`nspe_parse_nca_header`）：**字段区在 0x200**（两段 RSA 签名之后），分区表 0x240、四个 0x200 fs 头在 0x400——与 libpietendo 结构体注释（0x400）差一签段；探针 `test/work/nca_probe3.py` 对 staged NCA 逐字段验证。加密区 = 扇区 1..5（0x200..0xC00），`nspe_xts_decrypt` 按 tc::crypto 约定（tweak = 8 零字节 || BE64(sector)），向量 `tools/test_xts_vector.inc`（`test/work/xts_vector.py` 生成，pycryptodome 对拍）。
+- 判型规则（照 §3.3）：Program + 任一分区 AesCtrEx = 更新；Program 其余 = 本体；PublicData 且 `progid & 0xFFF` ∈ 1..8 且 `(progid>>12) == (app>>12)+1` = aocN（BOTW E000 → F001/F002）；Meta/Control 跳过。更新缺本体 → NSPE_NO_GAME（合并 romfs 必须双包）。仅 DLC → 不删旧 game files（叠加安装）。
+- 阶段 D 先 exefs 后长提取：NSO0 + 0x40 读 build id → game_versions.h 查表（未知/不支持 → NSPE_VERSION）；romfs 落地后核对 `System/Version.txt` 与 exefs 版本一致。
+- 进度：nstool 每 250ms 轮询输出目录字节数（上限封顶），exefs 预期 = 分区大小、romfs 预期 = 版本表 romfs_bytes、DLC = content_size；阶段边界推送文案（tr() 键，英文串由 UI 层翻译）。
+- 取消：run_nstool 轮询间查 `cancelled()` → kill + 删 staging；取消或失败（且已删过旧文件）→ 再调 remove_game_files 收尾，不留半成品；staging 无条件删除（`<data>/sw_cache/`）。
+- 密钥纪律：读 prod.keys `header_key`（32B，去空格）+ title.keys 按 id 查行 + staging 内 `<id>.tik`；日志只含内容 ID/类型/分区布局，无密钥。
+- 测试：`make test-nsp-extract`（stub nstool 按 argv 写 exefs/main（NSO0+build id）、romfs/System/Version.txt、aoc1；覆盖 args/nstool/keys/package/cancel/titlekeys/OK/version 错误路径 + 全流程 OK）。
+
+---
+
 ## 4. 解包驱动设计要点（实现前的定稿）
 
 - 阶段链：A 浅提取全部包 → B 判型分类 → C 密钥预检 → D exefs 提取 + build id fail-fast（1.9.0 不在表 → 明确报版本）→ E romfs/aoc 提取（直接落最终位置）→ F 清理 staging。
@@ -215,3 +229,4 @@
 | 2026-11-10 | 本文档建站 |
 | 2026-11-10 | §3/§4 步骤完成：`third_party/zstd/` vendor（1.5.7 解码合并源）、`runtime/ncz.c/.h`、`tools/test_ncz.c`、`make test-ncz`。合成 17 项全绿；真实 988MB NSZ 条目重建后 sha256 = `94a679f1…`，与原始 NCA 字节一致（黄金验收 ✅）。修三个实现级 bug：S 盒越界、输出 `wb+`、zstd 截断误判 |
 | 2026-11-10 | 修复本文档双重编码损坏（重写为干净 UTF-8），并补 §3.4 最终语义、§5.8 编码约束、§6 新故障行 |
+| 2026-11-10 | §5 步骤完成：`runtime/nsp_extract.c/.h`（A–F 全链路 + NSPE_* 错误码）+ `runtime/aes128.{c,h}`（共享 AES-128 双向）+ `make test-nsp-extract`（51 项合成，stub nstool 全流程）+ XTS 已知答案向量 `tools/test_xts_vector.inc`。NCA 头偏移实测定稿（字段区 0x200，见 §3.6）；ncz 17 项 + 黄金回归全绿 |

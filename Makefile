@@ -714,14 +714,23 @@ test-dlc-check: $(B)/test_dlc_check
 # NCZ to NCA rebuild (NSZ/XCZ entries). Golden check against a real dump:
 #   $(B)/test_ncz <file.ncz>              (sha256 of the rebuilt NCA must start with the .ncz name)
 #   $(B)/test_ncz <file.ncz> <want.nca>   (rebuild and compare bytes with a known-good NCA)
-$(B)/test_ncz: tools/test_ncz.c runtime/ncz.c runtime/ncz.h third_party/zstd/zstddeclib.c third_party/zstd/zstd.h
+$(B)/test_ncz: tools/test_ncz.c runtime/ncz.c runtime/ncz.h runtime/aes128.c runtime/aes128.h third_party/zstd/zstddeclib.c third_party/zstd/zstd.h
 	@mkdir -p $(B)
-	$(CC) -O1 -std=gnu11 -Wall -Wextra -Werror $(OSFLAGS) -Iruntime -Ithird_party/zstd -o $@ tools/test_ncz.c runtime/ncz.c third_party/zstd/zstddeclib.c
+	$(CC) -O1 -std=gnu11 -Wall -Wextra -Werror $(OSFLAGS) -Iruntime -Ithird_party/zstd -o $@ tools/test_ncz.c runtime/ncz.c runtime/aes128.c third_party/zstd/zstddeclib.c
 
 test-ncz: $(B)/test_ncz
 	$(B)/test_ncz
 
-.PHONY: test-game-file-size test-file-size-cache test-dlc-check test-ncz
+# NSP/XCI/NSZ package extraction driver. Synthetic: the platform layer and nstool are stubbed (the
+# fake nstool writes the files a real extraction would, so a full run reaches NSPE_OK).
+$(B)/test_nsp_extract: tools/test_nsp_extract.c tools/test_xts_vector.inc runtime/nsp_extract.c runtime/nsp_extract.h runtime/ncz.c runtime/ncz.h runtime/aes128.c runtime/aes128.h runtime/dlc_check.h third_party/zstd/zstddeclib.c third_party/zstd/zstd.h
+	@mkdir -p $(B)
+	$(CC) -O1 -std=gnu11 -Wall -Wextra -Werror $(OSFLAGS) -Iruntime -Ithird_party/zstd -o $@ tools/test_nsp_extract.c runtime/nsp_extract.c runtime/ncz.c runtime/aes128.c third_party/zstd/zstddeclib.c
+
+test-nsp-extract: $(B)/test_nsp_extract
+	$(B)/test_nsp_extract
+
+.PHONY: test-game-file-size test-file-size-cache test-dlc-check test-ncz test-nsp-extract
 
 # the command layer of the control endpoint (who may run what, the queue, the text)
 $(B)/test_control: tools/test_control.c runtime/control.c runtime/control.h
