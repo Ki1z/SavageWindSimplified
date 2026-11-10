@@ -252,6 +252,7 @@
 - **游戏代码**：生成器（venv python + tools/gen.py）+ clang 编译，407s（559/1059 片段命中 cache/gamecode）→ `swgame.dll` 227,978,935 B，`.id` = `dcb63f3167a4a698`（与 exe 内置 GAMELIB_ID 一致）。
 - **启动验证**：`[gamelib] extracted/swgame.dll (game version 1.9.0, 160 sites)`；main 125,144 + subsdk0 13,936 + sdk 40,516 函数；台地 warp 后 60.0 fps、~400k draws/2s。
 - **编译器缺失的坑**：Windows 上 `find_tools` 只认 `SAVAGEWIND_CC` → `zig/zig.exe`，**无 clang 回退**（该回退仅 `#ifndef _WIN32`）；开发布局必须设 `SAVAGEWIND_CC=<clang>` 或放置 `zig/`（`tools/fetch_zig.sh`）。否则 `build_game_code()` 立即失败，界面显示 FAIL_BUILD 的通用文案（"请确保有足够的可用空间…"），极易误导——已修：FAIL_BUILD 现在把 `gamebuild_run` 的 `why`（如 "the game code builder is missing from this copy of Savage Wind"）前置到提示里（launcher.mm `g_fail_detail`）。
+- **zig 玩家路径（同日补验）**：`zig/` 0.17.0 置于 exe 旁（sha256 校验通过）→ 全量 zig cc 编译 487s（0 片段复用；缓存按编译器区分）→ swgame.dll 222MB → 加载 + 台地 60fps / ~40 万 draws（与 clang 构建一致）。zig 下载在本网络被单连接限速 ~16KB/s，用 IDM 式多连接或浏览器+代理解决；注意带存档后标题流程不同，无头 warp 测试应配空 `SAVAGEWIND_SAVE_DIR`。
 
 
 ## 7. 变更记录
