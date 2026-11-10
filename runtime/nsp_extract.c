@@ -206,16 +206,6 @@ static bool keys_file_has_id(const char *file, const char *id_hex) {
     return found;
 }
 
-// the packages' own tickets (an NSP's .tik files are named after their rights id)
-static bool tickets_have_id(const Paths *files, const char *id_hex) {
-    for (int i = 0; i < files->n; i++) {
-        const char *p = files->v[i].path, *slash = strrchr(p, '/');
-        const char *name = slash ? slash + 1 : p;
-        if (ends_with_ci(name, ".tik") && strncasecmp(name, id_hex, 32) == 0) return true;
-    }
-    return false;
-}
-
 // ---- XTS (the NCA header decrypt) -----------------------------------------------------------
 // nstool's convention (tc::crypto::XtsModeImpl, byte-verified in test/work/nca_probe3.py): the
 // tweak starts as 8 zero bytes || BE64(sector), the data key is header_key[0:16] and the tweak key
@@ -388,7 +378,7 @@ static int find_partition(const NspeNcaInfo *info, unsigned format_type) {
 NspeError nsp_extract_run(const NspeOpts *o, char *why, size_t why_size) {
     NspeError err = NSPE_OK;
     char nstool[NSPE_PATH_MAX] = "";
-    Paths ncas = {0}, tickets = {0}, nczs = {0};
+    Paths ncas = {0}, nczs = {0};
     StagedNca *staged = NULL;
     int staged_n = 0;
     bool wiped_game_files = false;
@@ -541,9 +531,9 @@ NspeError nsp_extract_run(const NspeOpts *o, char *why, size_t why_size) {
             break;
         }
 
-        // ---- C: the titlekeys the chosen NCAs need
+        // ---- C: the titlekeys the chosen NCAs need (every rights id must be in title.keys: a package's own
+        // ticket is locked to the console that made it, and nstool is given the keys file alone)
         if (o->progress) o->progress(o->user, "Checking the encryption keys...", 0.22);
-        scan_dir(o->staging_dir, 0, ".tik", &tickets);
         int chosen[2 + RT_DLC_MAX], chosen_n = 0;
         if (update >= 0) chosen[chosen_n++] = update;
         if (base >= 0) chosen[chosen_n++] = base;
@@ -558,7 +548,6 @@ NspeError nsp_extract_run(const NspeOpts *o, char *why, size_t why_size) {
             if (zero) continue;   // no titlekey needed for this NCA
             hex16(id, staged[chosen[i]].info.rights_id);
             if (o->title_keys && *o->title_keys && keys_file_has_id(o->title_keys, id)) continue;
-            if (tickets_have_id(&tickets, id)) continue;
             snprintf(missing[nmissing++], 33, "%s", id);
         }
         if (nmissing) {
@@ -621,7 +610,8 @@ NspeError nsp_extract_run(const NspeOpts *o, char *why, size_t why_size) {
             bool is_nso = f && fread(nso, 1, sizeof nso, f) == sizeof nso && !memcmp(nso, "NSO0", 4);
             if (f) fclose(f);
             if (!is_nso) {
-                set_why(why, why_size, "exefs/main isn't a game module (the extraction left it out?)");
+                set_why(why, why_size, "exefs/main isn't a game module (the program NCA didn't decrypt into one? the "
+                                       "title keys entry may be wrong)");
                 err = NSPE_NCA;
                 break;
             }

@@ -153,6 +153,7 @@ static int g_spawn_fail;        // plat_spawn returns NULL (nstool didn't start)
 static int g_proc_exit;         // the fake nstool's exit code
 static int g_wait_running;      // waits that pretend the process is still running
 static int g_cancelled;         // what the driver's cancelled() callback says
+static int g_stage_tik;         // the package also stages its own ticket (a rights-id-named .tik)
 static char g_last_removed[1100];
 static char g_build_id[17];     // what the fake nstool writes into exefs/main
 static char g_version_text[32]; // and into romfs/System/Version.txt
@@ -184,6 +185,10 @@ PlatProc plat_spawn(const char *const argv[], const char *log_path, bool append_
         fabricate_header(plain, 5, 0x01007ef00011f001ull, RIGHTS_E800_3, 0, 3, 0, 0);
         snprintf(p, sizeof p, "%s/20000000000000000000000000000000.nca", flag);
         write_nca(p, plain, HDR_KEY);
+        if (g_stage_tik) {   // a dump's own ticket: named after the rights id, like real NSPs carry them
+            snprintf(p, sizeof p, "%s/01007ef00011e8000000000000000003.tik", flag);
+            write_text(p, "tik\n");
+        }
     } else if (out && strstr(out, "exefs")) {
         // partition extraction: the executable partition's main module, build id at 0x40
         mkdirs(out);
@@ -262,6 +267,7 @@ static void reset_state(void) {
     g_proc_exit = 0;
     g_wait_running = 0;
     g_cancelled = 0;
+    g_stage_tik = 0;
     g_last_removed[0] = 0;
     g_steps_n = 0;
     strcpy(g_build_id, "cd57b23fa4bbad65");   // 1.9.0, supported
@@ -413,6 +419,18 @@ static void test_titlekeys(const char *self) {
     o.title_keys = "build/syn_title_other.keys";   // without the rights id the staged NCAs need
     CHECK(nsp_extract_run(&o, why, sizeof why) == NSPE_TITLEKEYS);
     CHECK(strstr(why, "01007ef00011e8000000000000000003") != NULL);
+
+    // the package's own ticket doesn't stand in: its titlekey is locked to the console that made it, and
+    // nstool is given the keys file alone, so the entry must be in title.keys either way
+    reset_state();
+    write_key_files();
+    g_stage_tik = 1;
+    base_opts(&o, self);
+    o.prod_keys = "build/syn_prod.keys";
+    o.title_keys = "build/syn_title_other.keys";
+    CHECK(nsp_extract_run(&o, why, sizeof why) == NSPE_TITLEKEYS);
+    CHECK(strstr(why, "01007ef00011e8000000000000000003") != NULL);
+    g_stage_tik = 0;
 }
 
 static void test_full_run(const char *self) {

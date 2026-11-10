@@ -828,8 +828,8 @@ static void pkg_failure(NspeError e, const char *why) {
     case NSPE_TITLEKEYS:
         set_job("title.keys is missing some of the packages' keys", true,
                 (std::string)trv("The packages hold encrypted content these keys don't cover:") + " " + (why ? why : "") +
-                ". " + tr("Give the title.keys that belongs to your console and the game, or packages that bring their "
-                "own tickets (an NSP dump usually does)."));
+                ". " + tr("Give the title.keys that belongs to your console and the game: it needs an entry for every "
+                "package. A package's own ticket is locked to the console that made it, so it can't stand in."));
         break;
     case NSPE_PACKAGE:
         set_job("A package couldn't be read", true,
