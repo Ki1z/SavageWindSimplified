@@ -10577,7 +10577,11 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
             static int dlss_fg = -1;  // (test) SAVAGEWIND_FG_DLSS=1: NGX's DLSS-G in the FSR 3 path's place, same inputs
             if (dlss_fg < 0) dlss_fg = getenv("SAVAGEWIND_FG_DLSS") != NULL;
             if (test != 2) rec_drain();  // (FidelityFX and NGX record into cb themselves: what was queued first goes first)
-            ok = test == 2 ? true : dlss_fg ? fg_dlss_dispatch(cb, &cfg, &f) : fg_dispatch(cb, &cfg, &f);
+            // NGX's generation shares its runtime with NGX's SR: it runs only while NGX's SR is the
+            // upscaler (elsewhere it crashes), and the frame falls to FSR 3's own generation, which
+            // is self-contained - it rebuilds on any config change and runs with any SR engine
+            bool fg_dlss_now = dlss_fg && dlss_wanted();
+            ok = test == 2 ? true : fg_dlss_now ? fg_dlss_dispatch(cb, &cfg, &f) : fg_dispatch(cb, &cfg, &f);
             if (test == 2) o = hl;
             vk_full_barrier(cb);
             gp_mark(cb, "frame generation: done");

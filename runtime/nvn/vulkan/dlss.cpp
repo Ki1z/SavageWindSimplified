@@ -19,6 +19,7 @@ static NVSDK_NGX_Parameter *g_params;
 static NVSDK_NGX_Parameter *g_capability_params;
 static NVSDK_NGX_Handle *g_feature;
 static unsigned g_rebuilds;  // (bumped whenever the SR feature is released: see vk_dlss_generation)
+static bool g_settled;       // (SR evaluated since the last release: see vk_dlss_settled)
 static unsigned g_in_w, g_in_h, g_out_w, g_out_h, g_quality;
 static VkFormat g_color_format, g_output_format;
 static const char **g_instance_exts;
@@ -66,6 +67,7 @@ static void release_feature(void) {
     g_rebuilds++;  // (the frame-generation feature shares the runtime's state with this one: any
     g_in_w = g_in_h = g_out_w = g_out_h = g_quality = 0;   //  rebuild here makes its feature stale)
     g_color_format = g_output_format = VK_FORMAT_UNDEFINED;
+    g_settled = false;
 }
 
 bool vk_dlss_compiled(void) { return true; }
@@ -199,6 +201,12 @@ bool vk_dlss_available(void) { return g_available; }
 
 unsigned vk_dlss_generation(void) { return g_rebuilds; }
 
+bool vk_dlss_settled(void) {
+    // The generation feature may only touch the runtime again once SR has evaluated since its last
+    // rebuild: rebuilding or releasing it earlier crashes or leaves the feature dead.
+    return g_settled;
+}
+
 bool vk_dlss_apply(VkCommandBuffer cb, TexBackend *color, TexBackend *depth, TexBackend *motion,
                    TexBackend *output, unsigned quality, float jitter_x, float jitter_y, float mv_scale_x,
                    float mv_scale_y, bool reset) {
@@ -268,6 +276,7 @@ bool vk_dlss_apply(VkCommandBuffer cb, TexBackend *color, TexBackend *depth, Tex
         release_feature();
         return false;
     }
+    g_settled = true;  // (the runtime has taken a frame with this feature: the generation feature may rebuild)
     return true;
 }
 
@@ -285,6 +294,7 @@ void vk_dlss_required_device_extensions(const char ***names, unsigned *count) {
 bool vk_dlss_init(void) { return false; }
 void vk_dlss_shutdown(void) {}
 bool vk_dlss_available(void) { return false; }
+bool vk_dlss_settled(void) { return false; }
 bool vk_dlss_apply(VkCommandBuffer, TexBackend *, TexBackend *, TexBackend *, TexBackend *, unsigned, float, float, float, float,
                    bool) {
     return false;

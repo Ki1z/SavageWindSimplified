@@ -196,6 +196,8 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         excursion = true;
         sr_gen0 = vk_dlss_generation();  // (the rebuild below is the resync)
     }
+    if (g_feature && excursion && !vk_dlss_settled()) return false;  // (SR must take a frame first:
+    //  touching the generation feature before the runtime has settled crashes or kills it)
     if (g_feature && excursion) {
         // The SR feature was rebuilt (a preset or upscaler change, DLSS toggled off and on) or the
         // sizes went away and back: the feature's shared runtime state is stale either way, and

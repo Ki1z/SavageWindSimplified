@@ -19,6 +19,9 @@ bool vk_dlss_available(void);
 // Bumped whenever the SR feature is released and made again. Anything sharing the NGX runtime's
 // state with it (the frame-generation feature) must treat a change as "my feature is stale".
 unsigned vk_dlss_generation(void);
+// true once SR has evaluated since its last release: only then may the frame-generation feature
+// release or rebuild against the runtime (earlier than that crashes or kills the feature).
+bool vk_dlss_settled(void);
 // Takes the NGX runtime down and back up (SR's feature included). dlss_wanted backs off while it
 // runs, so no frame takes the "NGX can't run here" downgrade. false: there was nothing to restart.
 bool vk_dlss_reinitializing(void);
