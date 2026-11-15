@@ -173,8 +173,9 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     // after such a rebuild). A same-size rebuild is fine (proven mid-gameplay), but a size change has
     // no rebuild to fall back on: the feature is one-size for the process. So: generation pauses while
     // the size differs and resumes when it comes back (the loading screen to the game), and an SR
-    // rebuild retires it for the session - the next launch makes a fresh feature against the new
-    // settings. SAVAGEWIND_FG_DLSS_RESTART_AT=<frame> still forces a same-size rebuild (the experiment).
+    // rebuild (a preset or upscaler change, DLSS toggled off and on) makes the generation feature
+    // rebuild too - evaluating the old one against the new SR crashes. SAVAGEWIND_FG_DLSS_RESTART_AT=
+    // <frame> still forces a same-size rebuild (the experiment).
     static unsigned sr_gen0;      // (the runtime generation at this feature's birth)
     static bool sr_init;
     static int restart_at = -1;  // (experiment) rebuild mid-gameplay without a settings change anywhere near
@@ -190,11 +191,12 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         return false;
     }
     if (sr_init && sr_gen0 != vk_dlss_generation()) {
-        static int said_sr;
-        if (!said_sr++)
-            LOG("[dlss-fg] the SR feature was rebuilt (a preset or upscaler change): generation stays off until "
-                "the next launch\n");
-        return false;
+        LOG("[dlss-fg] the SR feature was rebuilt (a preset or upscaler change): the generation feature is "
+            "rebuilt against it\n");
+        // (the snippet's cubins hold GPU work: releasing mid-flight crashes inside nvngx_dlssg.dll)
+        if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+        fg_dlss_destroy();
+        sr_gen0 = vk_dlss_generation();
     }
     if (!sr_init) {
         sr_gen0 = vk_dlss_generation();
