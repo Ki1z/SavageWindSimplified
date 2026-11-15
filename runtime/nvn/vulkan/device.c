@@ -2493,6 +2493,13 @@ static void present_locked(NvnTexture *t) {
         if (test == 1) gen = NULL;
     }
     g_fg_active = gen != NULL;
+    {   // (measuring) how often the generated frame actually reaches the present, against the game's own
+        static int lg = -1;
+        if (lg < 0) lg = getenv("SAVAGEWIND_FG_LOG") != NULL;
+        static unsigned fg_n, fg_all;
+        if (lg && ++fg_all % 600 == 0) LOG("[vk] frame generation presented %u of %u game frames\n", fg_n, fg_all);
+        if (gen) fg_n++;
+    }
     static const float black[4] = {0, 0, 0, 1};
     bool have;
     { SW_ZONE("present/frame_begin"); have = vk_frame_begin(black); }

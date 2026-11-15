@@ -19,6 +19,10 @@ bool vk_dlss_available(void);
 // Bumped whenever the SR feature is released and made again. Anything sharing the NGX runtime's
 // state with it (the frame-generation feature) must treat a change as "my feature is stale".
 unsigned vk_dlss_generation(void);
+// Takes the NGX runtime down and back up (SR's feature included). dlss_wanted backs off while it
+// runs, so no frame takes the "NGX can't run here" downgrade. false: there was nothing to restart.
+bool vk_dlss_reinitializing(void);
+bool vk_dlss_restart(void);
 // color at the render size; depth and motion at its size too (MVLowRes): motion RG times mv_scale_x / mv_scale_y is
 // each pixel's offset to where it was in the previous frame, in render pixels (exec.c cam_motion's uv differences:
 // the motion's size; mvec.c's NDC differences: -w / 2, h / 2; zero, with reset, for none). jitter_x / jitter_y: the

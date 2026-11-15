@@ -178,6 +178,23 @@ void vk_dlss_shutdown(void) {
     g_initialized = false;
 }
 
+static bool g_reinit;  // (a restart is running: dlss_wanted backs off so no frame downgrades to FSR 1)
+
+bool vk_dlss_reinitializing(void) { return g_reinit; }
+
+bool vk_dlss_restart(void) {
+    // (the frame-generation snippet does not survive having its feature rebuilt alone; taking the
+    //  whole NGX runtime down and back up, SR and FG made afresh against the new settings, is the
+    //  route to run when the settings behind either feature have changed)
+    if (!g_initialized) return false;
+    g_reinit = true;
+    vk_dlss_shutdown();
+    bool ok = vk_dlss_init();
+    g_reinit = false;
+    LOG("[dlss] restart: %s\n", ok ? "ok" : "failed");
+    return ok;
+}
+
 bool vk_dlss_available(void) { return g_available; }
 
 unsigned vk_dlss_generation(void) { return g_rebuilds; }

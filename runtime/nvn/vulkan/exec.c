@@ -10615,7 +10615,7 @@ static struct {
     uint64_t frame;  // (renderer_present_count() of the last frame DLSS ran in)
 } dl;
 
-static bool dlss_wanted(void) { return g_settings.upscaler == UPSCALE_DLSS && vk_dlss_available(); }
+static bool dlss_wanted(void) { return g_settings.upscaler == UPSCALE_DLSS && vk_dlss_available() && !vk_dlss_reinitializing(); }
 
 // color (the scene, graded or not) to ow x oh: DLSS's output (post image 9), or NULL (no depth of the scene's size, or
 // NGX failed: FSR 1 for this frame; FSR 1 from then on when NGX can't make DLSS at all).
