@@ -1,12 +1,14 @@
 // NVIDIA NGX frame generation (DLSS-G): the FSR 3 path's surface (framegen.h), backed by
 // NGX_VK_CREATE_DLSSG / NGX_VK_EVALUATE_DLSSG. The smoke path behind SAVAGEWIND_FG_DLSS=1 (exec.c):
 // it passes what FgFrame carries - color, HUD-less, depth, motion vectors with their scale, the
-// camera's position and basis, the cut flag - and, not yet, the optional camera matrices and the
-// scene's jitter, which refine the interpolation but are not required for it to run.
+// camera's position and basis and the cut flag, and the optional block's camera matrices and the
+// scene's jitter, which refine the interpolation. The feature's own "no interpolated frame" flag
+// (dis_init below) suppresses the present, a frame late.
 // The SDK itself is optional and remains outside the Savage Wind repository (dlss.cpp's rule).
 #include "fg_dlss.h"
 #include "dlss.h"  // vk_dlss_available; and vk.h for LOG and g_vk
 
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -229,46 +231,64 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     NVSDK_NGX_Resource_VK mv = view_resource(&f->motion, false);
     NVSDK_NGX_Resource_VK hudless = view_resource(&f->hudless, false);
     NVSDK_NGX_Resource_VK out = view_resource(&f->out, true);
-    // The optional block's scalars are what makes evaluate accept the frame (MultiFrameCount and
-    // friends are only set when it is given), so it is always passed, with the camera's matrices
-    // derived from the game's own view-projections where NGX takes them.
-    NVSDK_NGX_DLSSG_Opt_Eval_Params opt = {};
-    opt.multiFrameCount = 1;  // (2x: one generated frame between two real ones)
-    opt.multiFrameIndex = 1;
+    // The parameters go on g_params directly and evaluate runs as the generic EvaluateFeature - the
+    // set of values a working DLSS-G integration passes, which the Opt_Eval_Params helper's block
+    // matches except that it also carries the flag resource NGX rejects with invalid-parameter when
+    // one is provided (a NULL leaves the feature's own heuristics to decide).
     float view_clip[16], inv_vp[16], inv_prev[16];
     mat_perspective(view_clip, f->fovy, (float)c->display_w / (float)c->display_h, f->near_, f->far_);
     if (!mat_invert(inv_vp, f->vp)) mat_identity(inv_vp);  // (a bad matrix: identity beats NaNs)
     if (!mat_invert(inv_prev, f->prev_vp)) mat_identity(inv_prev);
-    mat_mul((float *)opt.clipToPrevClip, f->prev_vp, inv_vp);  // this clip -> the previous clip
-    mat_mul((float *)opt.prevClipToClip, f->vp, inv_prev);     // the previous clip -> this clip
-    memcpy(opt.cameraViewToClip, view_clip, sizeof view_clip);
-    if (!mat_invert((float *)opt.clipToCameraView, view_clip)) mat_identity((float *)opt.clipToCameraView);
-    mat_identity((float *)opt.clipToLensClip);                 // (no lens distortion)
-    opt.jitterOffset[0] = opt.jitterOffset[1] = 0;        // (the SR jitter is not plumbed here yet)
-    opt.mvecScale[0] = opt.mvecScale[1] = 1;              // (both vector paths' .xy are in [-1,1] already)
-    memcpy(opt.cameraPos, f->cam_pos, sizeof opt.cameraPos);
-    memcpy(opt.cameraUp, f->cam_up, sizeof opt.cameraUp);
-    memcpy(opt.cameraRight, f->cam_right, sizeof opt.cameraRight);
-    memcpy(opt.cameraFwd, f->cam_fwd, sizeof opt.cameraFwd);
-    opt.cameraNear = f->near_;
-    opt.cameraFar = f->far_;
-    opt.cameraFOV = f->fovy;
-    opt.cameraAspectRatio = (float)c->display_w / (float)c->display_h;
-    opt.colorBuffersHDR = false;                          // (the final image is UNORM)
-    opt.depthInverted = c->depth_inverted;
-    opt.cameraMotionIncluded = true;                      // (both paths fold the camera's motion in)
-    opt.reset = f->reset;
-    opt.notRenderingGameFrames = false;
-    opt.orthoProjection = false;
-    opt.motionVectorsDilated = false;
-    opt.menuDetectionEnabled = false;
-    NVSDK_NGX_VK_DLSSG_Eval_Params ev = {};
-    ev.pBackbuffer = &back;
-    ev.pDepth = &depth;
-    ev.pMVecs = &mv;
-    ev.pHudless = &hudless;
-    ev.pOutputInterpFrame = &out;
-    NVSDK_NGX_Result r = NGX_VK_EVALUATE_DLSSG(cb, g_feature, g_params, &ev, &opt);
+    float clip_to_prev[16], prev_to_clip[16], clip_to_view[16];
+    mat_mul(clip_to_prev, f->prev_vp, inv_vp);  // this clip -> the previous clip
+    mat_mul(prev_to_clip, f->vp, inv_prev);     // the previous clip -> this clip
+    if (!mat_invert(clip_to_view, view_clip)) mat_identity(clip_to_view);
+    NVSDK_NGX_Parameter *p = g_params;
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_Backbuffer, &back);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_Depth, &depth);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_MVecs, &mv);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_HUDLess, &hudless);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_OutputInterpolated, &out);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_UIAlpha, NULL);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_OutputReal, NULL);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_OutputDisableInterpolation, NULL);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_BidirectionalDistortionField, NULL);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_CameraViewToClip, view_clip);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_ClipToCameraView, clip_to_view);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_ClipToPrevClip, clip_to_prev);
+    NVSDK_NGX_Parameter_SetVoidPointer(p, NVSDK_NGX_DLSSG_Parameter_PrevClipToClip, prev_to_clip);
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_MultiFrameCount, 1);   // (2x: one generated
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_MultiFrameIndex, 1);   //  frame per two real)
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_Reset, f->reset ? 1 : 0);
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_DepthInverted, c->depth_inverted ? 1 : 0);
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_ColorBuffersHDR, 0);  // (the final image is UNORM)
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_CameraMotionIncluded, 1);  // (the camera's motion is folded in)
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_MvecDilated, 0);
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_OrthoProjection, 0);
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_NotRenderingGameFrames, 0);
+    NVSDK_NGX_Parameter_SetUI(p, NVSDK_NGX_DLSSG_Parameter_MenuDetectionEnabled, 0);
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_MvecInvalidValue, -FLT_MAX);
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_JitterOffsetX, f->jit_x);  // (the scene's
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_JitterOffsetY, f->jit_y);  //  jitter, clip space)
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_MvecScaleX, 1);  // (both vector paths' .xy are
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_MvecScaleY, 1);  //  in [-1,1] already)
+    struct { const char *x, *y, *z; const float *v; } basis[] = {
+        {NVSDK_NGX_DLSSG_Parameter_CameraPosX, NVSDK_NGX_DLSSG_Parameter_CameraPosY, NVSDK_NGX_DLSSG_Parameter_CameraPosZ, f->cam_pos},
+        {NVSDK_NGX_DLSSG_Parameter_CameraUpX, NVSDK_NGX_DLSSG_Parameter_CameraUpY, NVSDK_NGX_DLSSG_Parameter_CameraUpZ, f->cam_up},
+        {NVSDK_NGX_DLSSG_Parameter_CameraRightX, NVSDK_NGX_DLSSG_Parameter_CameraRightY, NVSDK_NGX_DLSSG_Parameter_CameraRightZ, f->cam_right},
+        {NVSDK_NGX_DLSSG_Parameter_CameraFwdX, NVSDK_NGX_DLSSG_Parameter_CameraFwdY, NVSDK_NGX_DLSSG_Parameter_CameraFwdZ, f->cam_fwd},
+    };
+    for (int i = 0; i < 4; i++) {
+        NVSDK_NGX_Parameter_SetF(p, basis[i].x, basis[i].v[0]);
+        NVSDK_NGX_Parameter_SetF(p, basis[i].y, basis[i].v[1]);
+        NVSDK_NGX_Parameter_SetF(p, basis[i].z, basis[i].v[2]);
+    }
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_CameraNear, f->near_);
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_CameraFar, f->far_);
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_CameraFOV, f->fovy);
+    NVSDK_NGX_Parameter_SetF(p, NVSDK_NGX_DLSSG_Parameter_CameraAspectRatio, (float)c->display_w / (float)c->display_h);
+    NVSDK_NGX_Result r = NVSDK_NGX_VULKAN_EvaluateFeature_C(cb, g_feature, p, NULL);  // (the C entry: the
+    // C++ one collides with the copy the SR snippet's archive carries)
     if (!ok(r, "evaluate")) {
         static int fails;
         if (fails++ % 60 == 0) {  // (retry from scratch, not every frame: a create is expensive)
@@ -279,9 +299,8 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     }
     static int logged, n;
     if (!logged++)
-        LOG("[dlss-fg] first frame: %ux%u (render %ux%u) -> out %ux%u (jitter 0: the SR jitter is not plumbed here "
-            "yet)\n",
-            c->display_w, c->display_h, c->render_w, c->render_h, f->out.w, f->out.h);
+        LOG("[dlss-fg] first frame: %ux%u (render %ux%u) -> out %ux%u\n", c->display_w, c->display_h, c->render_w,
+            c->render_h, f->out.w, f->out.h);
     if (++n % 600 == 0) LOG("[dlss-fg] evaluated %d frames\n", n);
     return true;
 }

@@ -10563,6 +10563,12 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
             memcpy(f.cam_pos, pos, sizeof pos), memcpy(f.cam_up, up, sizeof up);
             memcpy(f.cam_right, right, sizeof right), memcpy(f.cam_fwd, fwd, sizeof fwd);
             for (int i = 0; i < 16; i++) f.vp[i] = (float)vp[i], f.prev_vp[i] = (float)fg.prev_vp[i];
+            {   // the scene's jitter for this frame (indexed by the shown frame: the same values the
+                // temporal upscaler saw), in the projection's clip-space units as mvec reads it back -
+                // DLSS-G's jitterOffset is clip space too (SR's own call converts to its pixel units)
+                float fj[2] = {0, 0}, fnr, ffr, ffov;
+                if (mvec_camera_now(fj, &fnr, &ffr, &ffov) && rt_jitter_on()) f.jit_x = fj[0], f.jit_y = fj[1];
+            }
             if (!g_fg_vk.dev) g_fg_vk = (FgVk){g_vk.phys, g_vk.dev, vk_fg_wait_idle};
             vk_full_barrier(cb);
             gp_mark(cb, "frame generation: FSR 3 optical flow + interpolation");

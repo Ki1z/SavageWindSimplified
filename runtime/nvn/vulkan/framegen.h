@@ -34,6 +34,8 @@ typedef struct {
     float cam_pos[3], cam_up[3], cam_right[3], cam_fwd[3];
     float vp[16], prev_vp[16];  // the game's view-projection, column-major (this frame, the previous one;
                                 // the NGX path derives its camera matrices from these)
+    float jit_x, jit_y;         // the scene's sub-pixel jitter, in render pixels (the temporal upscaler's;
+                                // 0, 0 when there is none - the NGX path passes them on to the feature)
     float frame_ms;    // time since the previous real frame
     uint64_t frame_id; // +1 per real frame (a gap resets the interpolation)
     bool reset;        // the camera cut: no history
