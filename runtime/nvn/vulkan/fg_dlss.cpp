@@ -165,6 +165,16 @@ void fg_dlss_destroy(void) {
 
 bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     if (!cb || !f || !g_vk.dev) return false;
+    static unsigned sr_gen = ~0u;  // (the SR feature's rebuilds invalidate the shared runtime state this
+    if (sr_gen == ~0u) sr_gen = vk_dlss_generation();  //  feature was made against: evaluating a stale one
+    if (sr_gen != vk_dlss_generation()) {              //  crashes the snippet, so a change retires it
+        static int said;
+        if (!said++)
+            LOG("[dlss-fg] the SR feature was rebuilt (preset or size change): generation stays off until "
+                "the next launch\n");
+        sr_gen = vk_dlss_generation();
+        return false;
+    }
     static FgConfig want = {};  // (a size change settles for a few frames before the feature follows it: the
     static unsigned settle;     //  loading screens flap tiny renders, and each create rebuilds the network)
     static int no_recreate = -1;  // (experiment) SAVAGEWIND_FG_DLSS_NORECREATE=1: never rebuild the feature;

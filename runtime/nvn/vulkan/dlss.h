@@ -16,6 +16,9 @@ void vk_dlss_required_device_extensions(const char ***names, unsigned *count);
 bool vk_dlss_init(void);
 void vk_dlss_shutdown(void);
 bool vk_dlss_available(void);
+// Bumped whenever the SR feature is released and made again. Anything sharing the NGX runtime's
+// state with it (the frame-generation feature) must treat a change as "my feature is stale".
+unsigned vk_dlss_generation(void);
 // color at the render size; depth and motion at its size too (MVLowRes): motion RG times mv_scale_x / mv_scale_y is
 // each pixel's offset to where it was in the previous frame, in render pixels (exec.c cam_motion's uv differences:
 // the motion's size; mvec.c's NDC differences: -w / 2, h / 2; zero, with reset, for none). jitter_x / jitter_y: the

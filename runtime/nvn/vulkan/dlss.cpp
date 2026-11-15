@@ -18,6 +18,7 @@ static bool g_available;
 static NVSDK_NGX_Parameter *g_params;
 static NVSDK_NGX_Parameter *g_capability_params;
 static NVSDK_NGX_Handle *g_feature;
+static unsigned g_rebuilds;  // (bumped whenever the SR feature is released: see vk_dlss_generation)
 static unsigned g_in_w, g_in_h, g_out_w, g_out_h, g_quality;
 static VkFormat g_color_format, g_output_format;
 static const char **g_instance_exts;
@@ -62,7 +63,8 @@ static void release_feature(void) {
         NVSDK_NGX_VULKAN_DestroyParameters(g_params);
         g_params = NULL;
     }
-    g_in_w = g_in_h = g_out_w = g_out_h = g_quality = 0;
+    g_rebuilds++;  // (the frame-generation feature shares the runtime's state with this one: any
+    g_in_w = g_in_h = g_out_w = g_out_h = g_quality = 0;   //  rebuild here makes its feature stale)
     g_color_format = g_output_format = VK_FORMAT_UNDEFINED;
 }
 
@@ -177,6 +179,8 @@ void vk_dlss_shutdown(void) {
 }
 
 bool vk_dlss_available(void) { return g_available; }
+
+unsigned vk_dlss_generation(void) { return g_rebuilds; }
 
 bool vk_dlss_apply(VkCommandBuffer cb, TexBackend *color, TexBackend *depth, TexBackend *motion,
                    TexBackend *output, unsigned quality, float jitter_x, float jitter_y, float mv_scale_x,
