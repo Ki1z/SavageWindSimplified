@@ -165,54 +165,44 @@ void fg_dlss_destroy(void) {
 
 bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     if (!cb || !f || !g_vk.dev) return false;
-    // The snippet cannot survive its feature being rebuilt while anything else in the NGX runtime is
-    // churning (the player's preset change or a loading screen's size flap: SR rebuilds, then a stale
-    // or remade FG feature meets freed shared state - read at 0xf8 in its worker thread). What is
-    // safe, proven both by the mid-gameplay forced rebuild and the fresh first create: rebuilding the
-    // FG feature alone once everything else has been still for a while. So: on any staleness, wait
-    // for a calm window, then rebuild; SAVAGEWIND_FG_DLSS_NORECREATE=1 skips generation instead.
-    static unsigned sr_gen;      // (the runtime generation this feature was made against)
-    static bool sr_valid;
-    bool sr_changed = sr_valid && sr_gen != vk_dlss_generation();
-    sr_gen = vk_dlss_generation();
-    sr_valid = true;
-    static FgConfig want = {};   // (a new size settles, the loading screens' tiny renders flap)
-    static unsigned settle;      // (calm frames since the last churn: sizes held, SR made no move)
-    static bool need_rebuild;
-    static int no_recreate = -1;  // (experiment) SAVAGEWIND_FG_DLSS_NORECREATE=1: never rebuild the feature;
-    if (no_recreate < 0)          //  once stale, generation stays off for the session (the isolation mode)
-        no_recreate = getenv("SAVAGEWIND_FG_DLSS_NORECREATE") != NULL;
-    static int reinit = -1;  // (experiment) SAVAGEWIND_FG_DLSS_REINIT=1: take the whole NGX runtime down and
-    if (reinit < 0)          //  back up at the rebuild instead of rebuilding the frame-generation feature alone
-        reinit = getenv("SAVAGEWIND_FG_DLSS_REINIT") != NULL;
-    static int restart_at = -1;  // (experiment) SAVAGEWIND_FG_DLSS_RESTART_AT=<frame>: rebuild mid-gameplay,
-    if (restart_at < 0)          //  without a settings change being anywhere near, to test the rebuild itself
+    // This snippet build cannot have its feature remade at a different size, nor keep evaluating it
+    // after the SR feature has been rebuilt beside it (five crashes, all read-at-0xf8 on its worker
+    // thread: the loading screens' size flaps, a DLSS preset change, and one stale feature evaluated
+    // after such a rebuild). A same-size rebuild is fine (proven mid-gameplay), but a size change has
+    // no rebuild to fall back on: the feature is one-size for the process. So: generation pauses while
+    // the size differs and resumes when it comes back (the loading screen to the game), and an SR
+    // rebuild retires it for the session - the next launch makes a fresh feature against the new
+    // settings. SAVAGEWIND_FG_DLSS_RESTART_AT=<frame> still forces a same-size rebuild (the experiment).
+    static unsigned sr_gen0;      // (the runtime generation at this feature's birth)
+    static bool sr_init;
+    static int restart_at = -1;  // (experiment) rebuild mid-gameplay without a settings change anywhere near
+    if (restart_at < 0)
         restart_at = getenv("SAVAGEWIND_FG_DLSS_RESTART_AT") ? atoi(getenv("SAVAGEWIND_FG_DLSS_RESTART_AT")) : 0;
-
     bool size_changed = g_feature && (g_w != c->display_w || g_h != c->display_h || g_rw != c->render_w ||
                                       g_rh != c->render_h || g_fmt != c->color_format);
-    if (size_changed || sr_changed) need_rebuild = true;
-    bool forced = restart_at > 0 && (long long)f->frame_id == restart_at && g_feature;
-    if (need_rebuild && g_feature) {
-        if (forced) LOG("[dlss-fg] rebuilding on request (frame %lld)\n", (long long)f->frame_id);
-        if (memcmp(&want, c, sizeof *c)) {  // (a size the feature wasn't made for: hold the old one until it holds)
-            want = *c;
-            settle = 0;
-        }
-        if (sr_changed) settle = 0;  // (SR moved again: the calm window starts over)
-        settle++;
-        if (no_recreate && !forced) return false;  // (the isolation mode: stale means off for the session)
-        if (!forced && (settle < 10 || memcmp(&want, c, sizeof *c))) return false;  // (not calm yet)
-        if (reinit && !forced) {
-            fg_dlss_destroy();  // (our handle goes first, then the runtime, then SR and FG are made afresh)
-            vk_dlss_restart();
-        } else {
-            // (the snippet's cubins hold GPU work: releasing mid-flight crashes inside nvngx_dlssg.dll)
-            if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
-            fg_dlss_destroy();
-        }
-        need_rebuild = false;
-        settle = 0;
+    if (size_changed) {
+        static int said_size;
+        if (said_size++ % 600 == 0)
+            LOG("[dlss-fg] the image's size is not the feature's (%ux%u): generation pauses until it returns\n",
+                g_w, g_h);
+        return false;
+    }
+    if (sr_init && sr_gen0 != vk_dlss_generation()) {
+        static int said_sr;
+        if (!said_sr++)
+            LOG("[dlss-fg] the SR feature was rebuilt (a preset or upscaler change): generation stays off until "
+                "the next launch\n");
+        return false;
+    }
+    if (!sr_init) {
+        sr_gen0 = vk_dlss_generation();
+        sr_init = true;
+    }
+    if (g_feature && restart_at > 0 && (long long)f->frame_id == restart_at) {
+        LOG("[dlss-fg] rebuilding on request (frame %lld)\n", (long long)f->frame_id);
+        // (the snippet's cubins hold GPU work: releasing mid-flight crashes inside nvngx_dlssg.dll)
+        if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+        fg_dlss_destroy();
     }
     if (!g_params && !ok(NVSDK_NGX_VULKAN_AllocateParameters(&g_params), "allocate parameters")) return false;
     if (!g_feature) {
