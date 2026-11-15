@@ -56,6 +56,8 @@ static NVSDK_NGX_Resource_VK image_resource(TexBackend *b, bool rw) {
 }
 
 static void release_feature(void) {
+    // (no generation bump: making the feature retries through here, and the frame-generation side
+    //  must not read those as rebuilds - only callers below that replace a feature in use bump)
     if (g_feature) {
         NVSDK_NGX_VULKAN_ReleaseFeature(g_feature);
         g_feature = NULL;
@@ -64,11 +66,15 @@ static void release_feature(void) {
         NVSDK_NGX_VULKAN_DestroyParameters(g_params);
         g_params = NULL;
     }
-    g_rebuilds++;  // (the frame-generation feature shares the runtime's state with this one: any
-    g_in_w = g_in_h = g_out_w = g_out_h = g_quality = 0;   //  rebuild here makes its feature stale)
+    g_in_w = g_in_h = g_out_w = g_out_h = g_quality = 0;
     g_color_format = g_output_format = VK_FORMAT_UNDEFINED;
     g_settled = false;
 }
+
+static void release_rebuilt(void) {
+    release_feature();
+    g_rebuilds++;  // (the frame-generation feature shares the runtime's state with this one: a
+}                  //  rebuild here makes its feature stale - see vk_dlss_generation)
 
 bool vk_dlss_compiled(void) { return true; }
 
@@ -218,7 +224,7 @@ bool vk_dlss_apply(VkCommandBuffer cb, TexBackend *color, TexBackend *depth, Tex
     if (!g_feature || g_in_w != color->width || g_in_h != color->height || g_out_w != output->width ||
         g_out_h != output->height || g_quality != quality || g_color_format != color->format ||
         g_output_format != output->format) {
-        release_feature();
+        release_rebuilt();
         NVSDK_NGX_DLSS_Create_Params create = {};
         create.Feature.InWidth = color->width;
         create.Feature.InHeight = color->height;
@@ -273,7 +279,7 @@ bool vk_dlss_apply(VkCommandBuffer cb, TexBackend *color, TexBackend *depth, Tex
     eval.InMVScaleY = mv_scale_y;
     NVSDK_NGX_Result r = NGX_VULKAN_EVALUATE_DLSS_EXT(cb, g_feature, g_params, &eval);
     if (!ok(r, "evaluate")) {
-        release_feature();
+        release_rebuilt();
         return false;
     }
     g_settled = true;  // (the runtime has taken a frame with this feature: the generation feature may rebuild)
