@@ -1561,6 +1561,7 @@ static void perf_overlay_draw(ImGuiIO &io, float scale) {
         case UPSCALE_FSR1: line += tr("FSR 1"); break;
         case UPSCALE_FSR3: line += tr("FSR 3"); break;
         case UPSCALE_FSR4: line += tr("FSR 4"); break;
+        case UPSCALE_DLSS: line += tr("DLSS"); break;
         default: line += tr("Off");
     }
     int q = upscale_quality_now();
@@ -1569,9 +1570,9 @@ static void perf_overlay_draw(ImGuiIO &io, float scale) {
         snprintf(f, sizeof f, "%.1f", upscale_factor());
         line += std::string(" ") + (q >= 0 && q < UPQ_COUNT ? std::string(tr(k_upscale_modes[q])) + " " : "") + f + "x";
     }
-    // (FSR 3 anti-aliases the scene itself: the setting does nothing then)
+    // (FSR 3, FSR 4 and DLSS anti-alias the scene themselves: the setting does nothing then)
     int aa = rt_antialias();
-    line += std::string(" | ") + tr("Anti-aliasing") + ": " + (rt_fsr4() ? tr("FSR 4") : rt_fsr3() ? tr("FSR 3") : aa == AA_TAA ? tr("TAA") : aa == AA_SMAA ? tr("SMAA") : g_settings.game_fxaa ? "FXAA" : tr("Off"));
+    line += std::string(" | ") + tr("Anti-aliasing") + ": " + (up == UPSCALE_DLSS ? tr("DLSS") : rt_fsr4() ? tr("FSR 4") : rt_fsr3() ? tr("FSR 3") : aa == AA_TAA ? tr("TAA") : aa == AA_SMAA ? tr("SMAA") : g_settings.game_fxaa ? "FXAA" : tr("Off"));
     ImGui::TextDisabled("%s", line.c_str());
     line.clear();
 #ifndef __APPLE__
