@@ -271,3 +271,10 @@
 | 2026-11-10 | §8 步骤完成：`$(B)/nstool/nstool.exe` 目标（兄弟 checkout 增量构建，不提交二进制）+ dist 打包 `nstool/nstool.exe` + MIT LICENSE + README 组件行；包内 `--titlekeyset` 验证可用（§3.8） |
 | 2026-11-10 | 步骤 9 前置完成：本机 app 全量构建打通（clang + `deps/` 前缀），修 `$(EXE)` 缺 zstddeclib.o 的链接 bug；`make deps-windows` 的 LGPL ffmpeg 就位；SDL3 换 UCRT64 版后 Vulkan 加载正常；setup 页无头截图实测通过（见 §3.9） |
 | 2026-11-10 | **步骤 9 E2E 通过**：真实 NSP 三模式（整合包+DLC1+空壳 DLC2）→ 提取 48,162 文件 + aoc1 7,094 文件 → 生成器+clang → swgame.dll 227MB → 进世界 60fps。同时修 FAIL_BUILD 提示缺真实原因的问题（`g_fail_detail` 前置），见 §3.10 |
+| 2026-11-14 | Stage C 票据豁免移除：title.keys 必须含每个包的条目（9b1db81）；README 重写为 fork 视角（59ba3a3）；发布 v0.5.0-alpha.5（prerelease） |
+
+### 3.11 上游同步与 DLSS 启用（2026-11-15）
+
+- **上游合并**：upstream/test 前进 61 提交（#588 → #818，越过 0.5.3-alpha.5）。冲突 18 文件：README 保 fork 版；13 语言表取并集（上游 996 行 + fork 39 行）；busy 覆盖层双方各自生长（上游应用自更新进度 + fork 包设置取消合一）；构建失败文案上游的 `set_build_failure`（按磁盘满/内存不足/工具缺失/权限分类）取代 fork 的 `g_fail_detail` 前缀方案。app 链接 + nsp-extract 53 + ncz 17 + i18n 全绿。
+- **SW Update 自更新按 fork 语境禁用**（上游 61 提交新引入）：其发布签名、sw-manifest 清单、版本流都是上游的，fork 玩家走它会拿上游构建覆盖 fork 文件。改三处最小差异：launcher.mm 启动检查注释掉（注释说明原因）、settings 默认 `check_updates=false`、dist 不打 `SW Update.exe`/清单。UI 代码原样保留（状态永不满足自然失活），下次同步冲突面最小。
+- **DLSS SR 启用**：SDK v310.9.1 浅克隆到仓库外 `../DLSS`（github.com git 协议可达；raw.githubusercontent 在本网络不通）。`make_dlss_import.py` 首跑即过，exe 内含 NGX 符号（`NVSDK_NGX_VULKAN_Init` 等）。菜单文案 13 表：FSR 3 段去掉"DLSS 后续版本推出"尾句（新键，旧行保留），DLSS 独立段按上游 FSR 4 段句式翻译。上游代码路径（dlss.cpp/dlss_compat.c/Makefile 检测）全部现成，fork 只补了 SDK 与文案。真机验证待 RTX 4060 Laptop（Optimus）实测。

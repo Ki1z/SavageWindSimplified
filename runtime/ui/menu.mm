@@ -909,8 +909,9 @@ static void tab_display(void) {
                "frame time graph and Link's coordinates. F10 switches between them while you play.");
 
     opt_section("Rendering");
-    {   // Upscaler: Off, this OS's spatial upscaler (its modes on the row below), DLSS where NGX runs, and FSR 3 still
-        // to come. Values that can't be picked are shown greyed; stepping onto them keeps the one in use.
+    {   // Upscaler: Off, this OS's spatial upscaler (its modes on the row below), FSR 3, FSR 4 and DLSS where each
+        // one's runtime provides it (DLSS needs NGX, so NVIDIA RTX graphics cards). Values that can't be picked are
+        // shown greyed; stepping onto them keeps the one in use.
         // The modes wait for render-target scaling (upscale_modes_available): until then the upscaler brings the
         // game's own 1920 x 1080 image to a bigger window.
         std::string fsr3 = upscaler_available(UPSCALE_FSR3) ? std::string(tr("AMD FSR 3"))
@@ -937,12 +938,14 @@ static void tab_display(void) {
               (upscaler_available(UPSCALE_FSR3)
                    ? tr("AMD FSR 3: it renders smaller and builds the full-resolution image from the frames before, "
                         "following the game's motion: sharper and steadier than FSR 1, and anti-aliased (Anti-aliasing "
-                        "has no effect with it). Sharpening sets its own sharpening. NVIDIA DLSS (NVIDIA RTX graphics "
-                        "cards) is coming in a later version.")
+                        "has no effect with it). Sharpening sets its own sharpening.")
                    : tr("AMD FSR 3 and NVIDIA DLSS (NVIDIA RTX graphics cards) are coming in a later version."));
         if (upscaler_available(UPSCALE_FSR4))  // (its own paragraph: the ones above keep their translations)
             uds += std::string("\n\n") + tr("AMD FSR 4: like FSR 3, but AMD's machine learning rebuilds the image. For AMD Radeon "
                                               "graphics cards on Windows. Sharpening sets its own sharpening.");
+        if (upscaler_available(UPSCALE_DLSS))  // (its own paragraph: the ones above keep their translations)
+            uds += std::string("\n\n") + tr("NVIDIA DLSS: like FSR 3, but NVIDIA's machine learning rebuilds the image. For "
+                                             "NVIDIA RTX graphics cards on Windows. Sharpening sets its own sharpening.");
         const char *ud = uds.c_str();
 #endif
         enum { NU = sizeof ups_value / sizeof ups_value[0] };
