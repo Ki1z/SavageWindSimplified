@@ -178,12 +178,14 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     // <frame> still forces a same-size rebuild (the experiment).
     static unsigned sr_gen0;      // (the runtime generation at this feature's birth)
     static bool sr_init;
+    static bool excursion;       // (the size or the SR generation changed since the feature's birth)
     static int restart_at = -1;  // (experiment) rebuild mid-gameplay without a settings change anywhere near
     if (restart_at < 0)
         restart_at = getenv("SAVAGEWIND_FG_DLSS_RESTART_AT") ? atoi(getenv("SAVAGEWIND_FG_DLSS_RESTART_AT")) : 0;
     bool size_changed = g_feature && (g_w != c->display_w || g_h != c->display_h || g_rw != c->render_w ||
                                       g_rh != c->render_h || g_fmt != c->color_format);
     if (size_changed) {
+        excursion = true;
         static int said_size;
         if (said_size++ % 600 == 0)
             LOG("[dlss-fg] the image's size is not the feature's (%ux%u): generation pauses until it returns\n",
@@ -191,12 +193,19 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         return false;
     }
     if (sr_init && sr_gen0 != vk_dlss_generation()) {
-        LOG("[dlss-fg] the SR feature was rebuilt (a preset or upscaler change): the generation feature is "
-            "rebuilt against it\n");
+        excursion = true;
+        sr_gen0 = vk_dlss_generation();  // (the rebuild below is the resync)
+    }
+    if (g_feature && excursion) {
+        // The SR feature was rebuilt (a preset or upscaler change, DLSS toggled off and on) or the
+        // sizes went away and back: the feature's shared runtime state is stale either way, and
+        // evaluating it in that state crashes. Same-size rebuilds are proven safe (the RESTART_AT
+        // experiment ran 19200 clean frames), so rebuild instead of resuming.
+        LOG("[dlss-fg] rebuilding after the SR feature or the sizes changed\n");
         // (the snippet's cubins hold GPU work: releasing mid-flight crashes inside nvngx_dlssg.dll)
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
         fg_dlss_destroy();
-        sr_gen0 = vk_dlss_generation();
+        excursion = false;
     }
     if (!sr_init) {
         sr_gen0 = vk_dlss_generation();
