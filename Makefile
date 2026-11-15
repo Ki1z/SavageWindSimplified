@@ -430,12 +430,15 @@ dist:
 	@! find tools -maxdepth 1 -name '*.py' -newer build/helper/swgen/swgen.exe | grep -q . || \
 	    { echo "make gen-helper first: tools/*.py changed since build/helper/swgen was frozen"; exit 1; }
 	@[ -x build/zig/zig.exe ] || { echo "tools/fetch_zig.sh first (the compiler)"; exit 1; }
-	$(MAKE) B=$(WIN_B) DEPS=$(CURDIR)/build/deps-win RELEASE=1 $(WIN_B)/savagewind.exe $(WIN_B)/savagewind-config.exe $(WIN_B)/sw-update.exe
+	$(MAKE) B=$(WIN_B) DEPS=$(CURDIR)/build/deps-win RELEASE=1 $(WIN_B)/savagewind.exe $(WIN_B)/savagewind-config.exe
 	! nm $(WIN_B)/savagewind.exe | grep ' f_70' >/dev/null  # (no game code inside)
 	rm -rf build/dist && mkdir -p "$(DIST)/gamelib-src"
 	cp $(WIN_B)/savagewind.exe $(WIN_B)/savagewind.dll.a "$(DIST)/"
 	cp $(WIN_B)/savagewind-config.exe "$(DIST)/Savage Wind Configuration.exe"
-	cp $(WIN_B)/sw-update.exe "$(DIST)/SW Update.exe"
+	# (fork: no "SW Update.exe" and no sw-manifest.txt here — the updater is upstream's, tied to upstream's
+	#  release signature, manifest and version stream; a fork player updating through it would trade this
+	#  fork's package setup, keys handling and everything else away for the upstream build. Updates are the
+	#  zip from the fork's releases page, applied by hand.)
 	tools/zig_slim.sh $(strip $(filter-out -Iruntime,$(GENFLAGS))) \
 	    $(if $(GENFLAGS_COMPAT),-- $(strip $(filter-out -Iruntime,$(GENFLAGS_COMPAT))))  # (zig, its runtime built ahead of time)
 	cp -R build/helper/swgen "$(DIST)/"
@@ -465,7 +468,7 @@ dist:
 	    xargs -I{} cp -u {} "$(DIST)/"
 	! ls "$(DIST)" | grep -iE 'x264|x265|xvid|postproc'  # (no GPL codec libraries in the release)
 	! ls "$(DIST)" | grep -i splash  # (no start screen picture: the player's own, never shipped)
-	python3 tools/make_update_manifest.py "$(DIST)" "$(VERSION)"  # (what SW Update checks and replaces: this list, nothing else)
+	# (fork: no sw-manifest.txt either — nothing here reads it without SW Update.exe)
 	cd build/dist && if command -v zip >/dev/null; then zip -qr "SavageWind-$(VERSION)-windows.zip" "Savage Wind"; \
 	    else /c/Windows/System32/tar.exe -a -cf "SavageWind-$(VERSION)-windows.zip" "Savage Wind"; fi
 	@echo "build/dist/SavageWind-$(VERSION)-windows.zip"
