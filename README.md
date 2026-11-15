@@ -24,9 +24,16 @@ The upstream setup takes a folder of already-extracted game files (exefs and rom
 - The packages are unpacked by a bundled [nstool](https://github.com/jakcron/nstool) (this project's fork with
   the `--titlekeyset` option re-enabled), then everything else — the version checks, the game code build with
   the bundled Zig, the DLC check — runs exactly as the folder flow's does.
+- **NVIDIA DLSS Super Resolution** ships in this fork's releases: the NGX integration is upstream's code, and
+  the SDK beside the checkout (`../DLSS`) was the missing piece. On NVIDIA RTX graphics cards, DLSS joins AMD
+  FSR in the game's graphics options; without the SDK, or on other GPUs, the game scales with FSR exactly as
+  upstream's does.
 
-Everything else is upstream Savage Wind, unchanged: the launcher, the graphics options, the controls, the
-whole game. See the [upstream README](https://github.com/Revivedx/SavageWindRecomp#readme) for the full
+Everything else is upstream Savage Wind, with two deliberate fork differences: the DLSS pieces above, and no
+in-app updater — upstream's SW Update checks, signs and versions its own releases, so updating through it
+would trade this fork away for the upstream build. To update here, download the zip from
+[the fork's releases](https://github.com/Ki1z/SavageWindSimplified/releases) and unpack it over the old one.
+See the [upstream README](https://github.com/Revivedx/SavageWindRecomp#readme) for the full
 picture, the [upstream `test` branch](https://github.com/Revivedx/SavageWindRecomp/tree/test) for
 contributing, and [docs/PROGRESS-SIMPLIFIED.md](docs/PROGRESS-SIMPLIFIED.md) for this fork's own roadmap and
 test results.
@@ -60,6 +67,10 @@ package flow adds these pieces:
 - `make gen-helper` freezes the generator (`tools/` + its Python packages) into `build/helper/swgen`.
 - `make dist` then assembles `build/dist/Savage Wind`: the release exe, the DLLs, `nstool/`, `zig/`,
   `swgen/`, the gamelib headers, the fonts and the licence files. That folder is what a release zip holds.
+  It also bundles NVIDIA DLSS when the SDK sits beside the checkout: clone NVIDIA's
+  [DLSS repository](https://github.com/NVIDIA/DLSS) at its `v310.9.1` tag to `../DLSS`, and the release
+  gets `nvngx_dlss.dll` (unchanged) with `NVIDIA-DLSS-LICENSE.txt`. Without it the build is fine — DLSS
+  just isn't in that release.
 
 ## Credits and License
 
@@ -86,6 +97,8 @@ The Windows release zip bundles, unchanged unless noted, under their own license
 - [nstool](https://github.com/jakcron/nstool) (MIT, `nstool/LICENSE`), the package unpacker behind the
   game-files setup's "from game packages" flow, built from this project's fork of it (the `--titlekeyset`
   option re-enabled).
+- NVIDIA DLSS, when a release has it: `nvngx_dlss.dll` (DLSS SDK 3.10.9, redistributed unchanged) under
+  its own license at `NVIDIA-DLSS-LICENSE.txt`; the NGX runtime itself ships with the NVIDIA driver.
 - The Fira Sans font, Medium and SemiBold (SIL OFL 1.1, `FiraSans-OFL.txt`), and the Noto Sans Thai and Noto
   Sans Hebrew fonts, Medium, for the menus in Thai and Hebrew (SIL OFL 1.1, `NotoSansThai-OFL.txt`,
   `NotoSansHebrew-OFL.txt`).
