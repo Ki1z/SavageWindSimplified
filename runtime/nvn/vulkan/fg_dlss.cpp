@@ -167,19 +167,19 @@ void fg_dlss_destroy(void) {
 
 bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     if (!cb || !f || !g_vk.dev) return false;
-    // This snippet build cannot have its feature remade at a different size, nor keep evaluating it
-    // after the SR feature has been rebuilt beside it (five crashes, all read-at-0xf8 on its worker
-    // thread: the loading screens' size flaps, a DLSS preset change, and one stale feature evaluated
-    // after such a rebuild). A same-size rebuild is fine (proven mid-gameplay), but a size change has
-    // no rebuild to fall back on: the feature is one-size for the process. So: generation pauses while
-    // the size differs and resumes when it comes back (the loading screen to the game), and an SR
-    // rebuild (a preset or upscaler change, DLSS toggled off and on) makes the generation feature
-    // rebuild too - evaluating the old one against the new SR crashes. SAVAGEWIND_FG_DLSS_RESTART_AT=
-    // <frame> still forces a same-size rebuild (the experiment).
+    // This snippet build cannot have its feature remade at a different size, nor survive an SR
+    // rebuild next to it carelessly: evaluating the old feature, remaking during a loading stream,
+    // and remaking the whole NGX runtime all crash or leave the feature dead (its worker thread
+    // reads through a pointer the rebuild invalidated; eight crashes total). A same-size rebuild at
+    // a calm gameplay moment is fine (proven mid-gameplay), but a size change has no rebuild to
+    // fall back on: the feature is one-size for the process. So: generation pauses while the size
+    // differs and resumes with a rebuild when it comes back; an SR rebuild (a preset or upscaler
+    // change, DLSS toggled off and on, the loading screens' own size flaps) marks the same
+    // excursion, and the rebuild waits for SR to settle and the frame times to calm down first.
+    // SAVAGEWIND_FG_DLSS_RESTART_AT=<frame> still forces a same-size rebuild (the experiment).
     static unsigned sr_gen0;      // (the runtime generation at this feature's birth)
     static bool sr_init;
-    static bool excursion;       // (the sizes went away, or the SR feature was rebuilt)
-    static bool sr_changed;      // (the excursion involved an SR rebuild: the runtime needs the full restart)
+    static bool excursion;       // (the sizes went away since the feature's birth)
     static int restart_at = -1;  // (experiment) rebuild mid-gameplay without a settings change anywhere near
     if (restart_at < 0)
         restart_at = getenv("SAVAGEWIND_FG_DLSS_RESTART_AT") ? atoi(getenv("SAVAGEWIND_FG_DLSS_RESTART_AT")) : 0;
@@ -194,32 +194,25 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         return false;
     }
     bool settled = vk_dlss_settled();
-    // (SR's create retries through quality fallbacks, each bumping the generation: only a settled
-    //  generation is final - the feature behind it evaluated - so a change is detected here alone)
+    // (SR's create retries through quality fallbacks and its input size changes with the scene's:
+    //  every such rebuild makes the generation feature stale, so any settled generation change is
+    //  an excursion like a size one)
     if (sr_init && settled && sr_gen0 != vk_dlss_generation()) {
-        excursion = sr_changed = true;
-        sr_gen0 = vk_dlss_generation();  // (the restart below is the resync)
+        excursion = true;
+        sr_gen0 = vk_dlss_generation();  // (the rebuild below is the resync)
     }
-    if (g_feature && excursion && !settled) return false;  // (SR must take a frame first:
-    //  touching the generation feature before the runtime has settled crashes or kills it)
+    if (!sr_init) {
+        sr_gen0 = vk_dlss_generation();
+        sr_init = true;
+    }
+    // The rebuild waits for calm: every crash among these rebuilds happened next to a loading
+    // stream - giant frame gaps put the snippet's worker in its transition state, and releasing or
+    // evaluating against that races it. Ninety consecutive sane frames (~1.5 s of gameplay) clear it.
+    static unsigned quiet;
+    quiet = f->frame_ms < 50.0f && !f->reset ? quiet + 1 : 0;
+    if (g_feature && excursion && (!settled || quiet < 90)) return false;
     if (g_feature && excursion) {
-        // The sizes went away and back (DLSS toggled off: the render is the display; the AA pipeline's
-        // formats change with it too), or the SR feature was rebuilt (a preset or engine change).
-        // A same-size rebuild is proven safe when the runtime itself did not change (the RESTART_AT
-        // experiment ran 19200 clean frames); after an SR rebuild nothing short of remaking the whole
-        // runtime - SR with it, boot's own sequence - survives.
-        if (sr_changed) {
-            LOG("[dlss-fg] the SR feature was rebuilt: restarting the NGX runtime (the generation feature "
-                "is remade with it)\n");
-            if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
-            fg_dlss_destroy();          // (released inside the live runtime, before it goes away)
-            vk_dlss_restart();
-            sr_gen0 = vk_dlss_generation();
-            sr_changed = false;
-            excursion = false;
-            return false;               // (a fresh feature next frame, against the fresh runtime)
-        }
-        LOG("[dlss-fg] rebuilding after the sizes changed\n");
+        LOG("[dlss-fg] rebuilding after the SR feature or the sizes changed\n");
         // (the snippet's cubins hold GPU work: releasing mid-flight crashes inside nvngx_dlssg.dll)
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
         fg_dlss_destroy();
