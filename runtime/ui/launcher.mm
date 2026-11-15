@@ -1750,6 +1750,20 @@ extern "C" void launcher_run(const char *root, int mode) {
         fprintf(stderr, "[launcher] delete %.1f GB: %s -> %s\n", gb, ok ? "ok" : "refused", status.c_str());
         if (!status.empty()) page = SETUP;
     }
+    if (getenv("SAVAGEWIND_SETUP_PACKAGES")) {  // (test) "Set up from the packages" with the saved paths, at once
+        settings_save();
+        g_file_size.set_suspended(true);
+        g_pkg_cancel = false;
+        pthread_mutex_lock(&g_lock);
+        g_busy = true;
+        g_packaging = true;
+        pthread_mutex_unlock(&g_lock);
+        g_stay_on_setup = true;
+        page = SETUP;
+        pthread_t t;
+        pthread_create(&t, NULL, package_thread, NULL);
+        pthread_detach(t);
+    }
     bool was_busy = false;
     while (!play) {
         menu_apply_window_requests(win);  // (the Video tab's Fullscreen)
