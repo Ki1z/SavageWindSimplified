@@ -599,6 +599,7 @@ static void note_family(void) {
                              pad ? SDL_GetGamepadName(pad) : "none", pad ? SDL_GetGamepadVendor(pad) : 0,
                              pad ? SDL_GetGamepadProduct(pad) : 0, pad ? (int)SDL_GetGamepadType(pad) : 0);
     pad_family = f;
+    bind_pad_family_apply();  // (the face-button defaults follow the family, untouched bindings only)
 }
 int input_pad_family(void) {
     static int env = -2;

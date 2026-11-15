@@ -36,6 +36,16 @@ _Static_assert(PADB_LTRIGGER == SDL_GAMEPAD_BUTTON_COUNT, "trigger pseudo-button
     SDL_SCANCODE_I, SDL_SCANCODE_K, SDL_SCANCODE_J, SDL_SCANCODE_L, SDL_SCANCODE_U, SDL_SCANCODE_O, SDL_SCANCODE_P, \
     SDL_SCANCODE_F7}
 static const int16_t k_def_pad[BIND_KEY_COUNT] = DEF_PAD, k_def_key[BIND_KEY_COUNT] = DEF_KEY;
+// The face buttons follow the controller family: Nintendo pads keep the Switch's physical layout, Xbox,
+// PlayStation and Steam Deck pads play by their own letters (A on the bottom, B on the right). The rest
+// of the pad is where the families agree. SAVAGEWIND_PAD_TYPE pretends a family (tests).
+static const int16_t k_def_pad_labels[BIND_KEY_COUNT] = {
+    SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH,
+    SDL_GAMEPAD_BUTTON_LEFT_STICK, SDL_GAMEPAD_BUTTON_RIGHT_STICK, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+    SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PADB_LTRIGGER, PADB_RTRIGGER, SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_BACK,
+    SDL_GAMEPAD_BUTTON_DPAD_LEFT, SDL_GAMEPAD_BUTTON_DPAD_UP, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, SDL_GAMEPAD_BUTTON_DPAD_DOWN,
+    [BIND_WALK ... BIND_GYRO_CENTER] = -1,
+    [BIND_FLY] = SDL_GAMEPAD_BUTTON_MISC1};
 int16_t g_bind_pad[BIND_KEY_COUNT] = DEF_PAD, g_bind_key[BIND_KEY_COUNT] = DEF_KEY;
 
 bool bind_pad_slot(int slot) { return (slot >= 0 && slot < BIND_PAD_COUNT) || (slot >= BIND_WALK && slot < BIND_KEY_COUNT); }
@@ -149,10 +159,11 @@ int bind_label_family(void) {
 
 static void result(int kind, int dev, int slot, int other);
 static int act_default(int dev, int id);
+static const int16_t *pad_defaults(void);
 static void act_refresh(void);
 
 void bind_reset(int dev) {
-    if (dev == BIND_DEV_PAD) memcpy(g_bind_pad, k_def_pad, sizeof g_bind_pad);
+    if (dev == BIND_DEV_PAD) memcpy(g_bind_pad, pad_defaults(), sizeof g_bind_pad);
     else memcpy(g_bind_key, k_def_key, sizeof g_bind_key);
     for (int id = 0; id < ACT_COUNT; id++) act_set(dev, id, ACT_FOLLOW);
     LOG("[input] %s bindings reset to the defaults\n", dev == BIND_DEV_PAD ? "controller" : "keyboard");
@@ -174,14 +185,15 @@ void bind_reset_slot(int slot) {
 bool bind_is_default(int dev) {
     for (int id = 0; id < ACT_COUNT; id++)
         if (!bind_is_default_slot(dev, BIND_ACTION + id)) return false;
-    return dev == BIND_DEV_PAD ? !memcmp(g_bind_pad, k_def_pad, sizeof g_bind_pad) : !memcmp(g_bind_key, k_def_key, sizeof g_bind_key);
+    return dev == BIND_DEV_PAD ? !memcmp(g_bind_pad, pad_defaults(), sizeof g_bind_pad)
+                               : !memcmp(g_bind_key, k_def_key, sizeof g_bind_key);
 }
 
 bool bind_is_default_slot(int dev, int slot) {
     if (bind_slot_is_action(slot)) return act_default(dev, slot - BIND_ACTION) ==
         (dev == BIND_DEV_PAD ? g_act_pad[slot - BIND_ACTION] : g_act_key[slot - BIND_ACTION]);
     if (slot < 0 || slot >= BIND_KEY_COUNT) return true;
-    return dev == BIND_DEV_PAD ? g_bind_pad[slot] == k_def_pad[slot] : g_bind_key[slot] == k_def_key[slot];
+    return dev == BIND_DEV_PAD ? g_bind_pad[slot] == pad_defaults()[slot] : g_bind_key[slot] == k_def_key[slot];
 }
 
 
@@ -407,7 +419,30 @@ int act_switch_button(int id) {
 static int act_default(int dev, int id) {
     int b = mask_button(k_masks_190[id]);
     if (b < 0) return ACT_NONE;
-    return dev == BIND_DEV_PAD ? k_def_pad[b] : k_def_key[b];
+    return dev == BIND_DEV_PAD ? pad_defaults()[b] : k_def_key[b];
+}
+
+// The factory pad defaults for the controller family in use (pad_defaults above); bind_reset and the
+// action defaults read these, so a pad of the other family gets its own letters.
+static const int16_t *pad_defaults(void) {
+    int f = input_pad_family();
+    return f == 1 || f == 2 || f == 3 ? k_def_pad_labels : k_def_pad;
+}
+
+// Called when the open pad's family is known or has changed (runtime/hle/input.c note_family): slots
+// that still hold the other family's defaults follow it, the ones the player rebound themselves stay.
+void bind_pad_family_apply(void) {
+    bool labels = pad_defaults() == k_def_pad_labels;
+    const int16_t *mine = labels ? k_def_pad_labels : k_def_pad, *other = labels ? k_def_pad : k_def_pad_labels;
+    bool changed = false;
+    for (int i = 0; i < 4; i++)
+        if (g_bind_pad[BIND_A + i] == other[BIND_A + i]) g_bind_pad[BIND_A + i] = mine[BIND_A + i], changed = true;
+    for (int id = 0; id < ACT_COUNT; id++) {
+        int b = mask_button(k_masks_190[id]);
+        if (b < 0 || (a_explicit_pad & 1ull << id)) continue;
+        if (g_act_pad[id] == other[b]) g_act_pad[id] = mine[b], changed = true;
+    }
+    if (changed) act_refresh();
 }
 
 bool act_is_default(int id) {

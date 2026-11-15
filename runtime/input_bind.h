@@ -62,6 +62,7 @@ const char *bind_input_group(int slot);        // "gyro" for the seven gyro slot
 const char *bind_pad_label(int host, int fam); // controller button in the pad family's own words (fam: input_pad_family)
 const char *bind_key_label(int scancode);
 int bind_label_family(void);                   // the connected controller's family (also on the start screen)
+void bind_pad_family_apply(void);              // the open pad's family is known or changed: face defaults follow it
 void bind_reset(int dev);
 void bind_reset_slot(int slot);                // one input (or action: BIND_ACTION + id) back to its defaults, both devices
 bool bind_is_default(int dev);
