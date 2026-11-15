@@ -32,6 +32,8 @@ typedef struct {
     FgImage out;       // the interpolated frame (storage image)
     float near_, far_, fovy;  // the world camera's (fovy in radians)
     float cam_pos[3], cam_up[3], cam_right[3], cam_fwd[3];
+    float vp[16], prev_vp[16];  // the game's view-projection, column-major (this frame, the previous one;
+                                // the NGX path derives its camera matrices from these)
     float frame_ms;    // time since the previous real frame
     uint64_t frame_id; // +1 per real frame (a gap resets the interpolation)
     bool reset;        // the camera cut: no history

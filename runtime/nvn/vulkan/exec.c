@@ -36,6 +36,7 @@
 #include "../output_scale.h"
 #include "framegen.h"
 #include "dlss.h"
+#include "fg_dlss.h"
 #include "../output_scale.h"
 #include "../../game_sites.h"
 #include "../../framepace.h"
@@ -10561,13 +10562,16 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
             }
             memcpy(f.cam_pos, pos, sizeof pos), memcpy(f.cam_up, up, sizeof up);
             memcpy(f.cam_right, right, sizeof right), memcpy(f.cam_fwd, fwd, sizeof fwd);
+            for (int i = 0; i < 16; i++) f.vp[i] = (float)vp[i], f.prev_vp[i] = (float)fg.prev_vp[i];
             if (!g_fg_vk.dev) g_fg_vk = (FgVk){g_vk.phys, g_vk.dev, vk_fg_wait_idle};
             vk_full_barrier(cb);
             gp_mark(cb, "frame generation: FSR 3 optical flow + interpolation");
             static int test = -1;  // (measuring) SAVAGEWIND_FG_TEST=2: no interpolation (the HUD-less copy shown instead)
             if (test < 0) test = getenv("SAVAGEWIND_FG_TEST") ? atoi(getenv("SAVAGEWIND_FG_TEST")) : 0;
-            if (test != 2) rec_drain();  // (FidelityFX records into cb itself: what was queued before goes first)
-            ok = test == 2 ? true : fg_dispatch(cb, &cfg, &f);
+            static int dlss_fg = -1;  // (test) SAVAGEWIND_FG_DLSS=1: NGX's DLSS-G in the FSR 3 path's place, same inputs
+            if (dlss_fg < 0) dlss_fg = getenv("SAVAGEWIND_FG_DLSS") != NULL;
+            if (test != 2) rec_drain();  // (FidelityFX and NGX record into cb themselves: what was queued first goes first)
+            ok = test == 2 ? true : dlss_fg ? fg_dlss_dispatch(cb, &cfg, &f) : fg_dispatch(cb, &cfg, &f);
             if (test == 2) o = hl;
             vk_full_barrier(cb);
             gp_mark(cb, "frame generation: done");

@@ -109,6 +109,10 @@ bool vk_dlss_init(void) {
     }
     app_data[(sizeof(app_data) / sizeof(*app_data)) - 1] = 0;
 
+    // SAVAGEWIND_NGX_LOG=1: NGX's own lines (which parameter it dislikes and why) into the app's log.
+    static int ngx_log = -1;
+    if (ngx_log < 0) ngx_log = getenv("SAVAGEWIND_NGX_LOG") != NULL;
+
     // Prefer the redistributable next to the executable, then try the sibling
     // SDK checkout used by source builds. Supplying both paths avoids relying
     // on the process working directory (which differs between the launcher and
@@ -137,6 +141,12 @@ bool vk_dlss_init(void) {
     NVSDK_NGX_FeatureCommonInfo common = {};
     common.PathListInfo.Path = paths;
     common.PathListInfo.Length = npaths;
+    if (ngx_log) {
+        common.LoggingInfo.LoggingCallback = [](const char *message, NVSDK_NGX_Logging_Level level,
+                                                NVSDK_NGX_Feature source) { LOG("[ngx] %s\n", message); };
+        common.LoggingInfo.MinimumLoggingLevel = NVSDK_NGX_LOGGING_LEVEL_VERBOSE;
+        LOG("[dlss] NGX logging enabled (SAVAGEWIND_NGX_LOG)\n");
+    }
 
     // Project IDs must be GUID-like for custom engines. This ID is stable for
     // Savage Wind and does not require an NVIDIA-issued application ID.
