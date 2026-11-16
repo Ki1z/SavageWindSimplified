@@ -521,7 +521,10 @@ void build_items(void) {
                        [](const Item &, int x) { g_settings.antialias = x; }, AA_OFF));
 #else
                        [](const Item &) { return 0; },  // (locked: the row shows the one frozen value)
-                       [](const Item &, int x) { settings_aa_row_set(x); }, AA_ROW_FXAA));
+                       [](const Item &, int x) {
+                           if (fg_locks_sr()) return;  // (frozen: stores nothing)
+                           settings_aa_row_set(x);
+                       }, AA_ROW_FXAA));
 #endif
     v.back().desc_fn = [](const Item &) {
         return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
@@ -541,7 +544,10 @@ void build_items(void) {
                                if (k_ups_value[i] == g_settings.upscaler) return i;
                            return 0;
                        },
-                       [](const Item &, int x) { g_settings.upscaler = k_ups_value[x]; }, UPS_DEFAULT));
+                       [](const Item &, int x) {
+                           if (fg_locks_sr()) return;  // (frozen: stores nothing)
+                           g_settings.upscaler = k_ups_value[x];
+                       }, UPS_DEFAULT));
     v.back().value_off = [](const Item &, int x) { return !fg_locks_sr() && !upscaler_available(k_ups_value[x]); };
     v.back().desc_fn = [](const Item &) {  // (one line)
         return fg_locks_sr()                     ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
@@ -623,6 +629,7 @@ void build_items(void) {
                        },
                        [](const Item &) { return fg_locks_sr() ? 0 : g_settings.frame_gen ? (g_settings.frame_gen_dlss ? 2 : 1) : 0; },
                        [](const Item &, int x) {
+                           if (fg_locks_sr()) return;  // (frozen: the row shows DLSS and stores nothing)
                            g_settings.frame_gen = x != 0;
                            g_settings.frame_gen_dlss = x == 2;
                        }, 0));

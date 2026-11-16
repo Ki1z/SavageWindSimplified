@@ -1069,9 +1069,9 @@ static void tab_display(void) {
                          "rate above counts them all, so the game itself draws half of it (60 with 120) and the controls answer "
                          "as at that rate, a little later. In play only: the menus and the map show the game's own frames. Fast "
                          "moves can leave faint smears around Link and what moves on its own.");
-            std::string fd = std::string(fgbase) +
-                             (fg_locks_sr() ? std::string("\n\n") + tr("Locked while DLSS frame generation runs: change it on the title screen.")
-                                            : std::string());
+            std::string fd = fg_locks_sr()
+                                 ? std::string(tr("Locked while DLSS frame generation runs: change it on the title screen."))
+                                 : std::string(fgbase);
             static int fgshown = -1;
             bool fg_locked = fg_locks_sr();
             if (fg_locked) opt_disable_next();  // (the feature runs until the title screen tears it down)
