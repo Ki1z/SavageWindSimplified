@@ -2,9 +2,10 @@
 
 A fork of [Savage Wind Recomp](https://github.com/Revivedx/SavageWindRecomp) — a static recompilation of
 *The Legend of Zelda: Breath of the Wild* (Nintendo Switch, version 1.9.0) into a native application for
-Windows — that adds what the upstream start screen doesn't have yet: **setting the game up straight from your
-own dump packages**. This fork's changes live on the `simplified` branch and stay here: they are this fork's
-local convenience, not proposals against upstream.
+Windows — that adds what the upstream start screen doesn't have: **setting the game up straight from your
+own dump packages**, and **NVIDIA DLSS for the upscaler and for frame generation**. This fork tracks the
+upstream's `test` branch (currently its Alpha 6, 0.6.0) and keeps its own changes on the `simplified`
+branch: they are this fork's local convenience, not proposals against upstream.
 
 > [!NOTE]
 > **No game files are included.** You need your own legally obtained copy of the game, dumped from **your own**
@@ -24,18 +25,25 @@ The upstream setup takes a folder of already-extracted game files (exefs and rom
 - The packages are unpacked by a bundled [nstool](https://github.com/jakcron/nstool) (this project's fork with
   the `--titlekeyset` option re-enabled), then everything else — the version checks, the game code build with
   the bundled Zig, the DLC check — runs exactly as the folder flow's does.
-- **NVIDIA DLSS Super Resolution** ships in this fork's releases: the NGX integration is upstream's code, and
-  the SDK beside the checkout (`../DLSS`) was the missing piece. On NVIDIA RTX graphics cards, DLSS joins AMD
-  FSR in the game's graphics options; without the SDK, or on other GPUs, the game scales with FSR exactly as
-  upstream's does.
-- **NVIDIA DLSS frame generation** (this fork's own work): on RTX 40 and newer, Video > Advanced > Frame
-  generation's DLSS value makes a frame between each two the game draws, beside the DLSS upscaler it pairs with.
-  The pairing is one gameplay session: everything it depends on is set on the title screen and freezes in play
-  (each frozen row's description says where to set it), a moved render size retires the generation until the
-  next title screen, and nothing of it crashes. FSR 3's frame generation remains for every other card. The
-  release ships NVIDIA's `nvngx_dlssg.dll` under the SDK's licence, like `nvngx_dlss.dll` before it.
 
-Everything else is upstream Savage Wind, with two deliberate fork differences: the DLSS pieces above, and no
+### NVIDIA DLSS
+
+Alpha 6 of the upstream moved NGX itself into the application: the runtime is loaded from the NVIDIA driver,
+nothing of the SDK is compiled or linked, and the feature DLLs are the SDK's own, shipped beside the exe
+under the SDK's licence. On this base the fork ships **DLSS Super Resolution** (upstream's feature, this
+fork's packaging) and **DLSS frame generation** (this fork's own work):
+
+- **DLSS Super Resolution** joins AMD FSR in the game's graphics options on NVIDIA RTX graphics cards. The
+  release bundles `nvngx_dlss.dll`; without it the game scales with FSR exactly as upstream's does.
+- **DLSS frame generation** (`nvngx_dlssg.dll`, RTX 40 and newer) makes a frame between each two the game
+  draws, and pairs with the DLSS upscaler for a whole gameplay session: the engine arms when you enter the
+  game and only beside DLSS as the upscaler (with anything else the row says so, and FSR 3's own frame
+  generation runs instead). The settings it pairs with freeze while it runs — each frozen row's description
+  says where to set it — a render size that moves and comes back rebuilds where it left off, and one that
+  stays moved retires the generation until the next title screen, where the pair is torn down and every
+  choice frees up again. The performance overlay names the engine that is actually running.
+
+Everything else is upstream Savage Wind, with two deliberate fork differences: the pieces above, and no
 in-app updater — upstream's SW Update checks, signs and versions its own releases, so updating through it
 would trade this fork away for the upstream build. To update here, download the zip from
 [the fork's releases](https://github.com/Ki1z/SavageWindSimplified/releases) and unpack it over the old one.
@@ -73,10 +81,10 @@ package flow adds these pieces:
 - `make gen-helper` freezes the generator (`tools/` + its Python packages) into `build/helper/swgen`.
 - `make dist` then assembles `build/dist/Savage Wind`: the release exe, the DLLs, `nstool/`, `zig/`,
   `swgen/`, the gamelib headers, the fonts and the licence files. That folder is what a release zip holds.
-  It also bundles NVIDIA DLSS when the SDK sits beside the checkout: clone NVIDIA's
+  It also bundles NVIDIA's DLSS DLLs when the SDK sits beside the checkout: clone NVIDIA's
   [DLSS repository](https://github.com/NVIDIA/DLSS) at its `v310.9.1` tag to `../DLSS`, and the release
   gets `nvngx_dlss.dll` and `nvngx_dlssg.dll` (both unchanged) with `NVIDIA-DLSS-LICENSE.txt`. Without it
-  the build is fine — DLSS just isn't in that release.
+  the build is fine — the game just runs with FSR, and the NGX runtime itself comes with the NVIDIA driver.
 
 ## Credits and License
 

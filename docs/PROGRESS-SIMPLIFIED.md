@@ -287,3 +287,10 @@
 - **尺寸移动的定论**：加载屏短暂抖动=持有(600 dispatch)+安静期(90 帧)自愈；真正持续的尺寸变化（保留预设/窗口拖拽/全屏切换——最后者绕过持有直接重建渲染目标）=FG 退役至下一次标题屏。**原地对重启实验失败**：销毁→SR 重建→旁边新建，两次一致崩溃（安全创建窗口只有 boot 和标题屏，游戏世界两者都不是）。退役由日志明示，回标题自动清除（不再是"重启才恢复"）。
 - **未做**：Reflex（VK_NV_low_latency2，FG 收官后的下一步）；量化对照（确定性回放 A/B 差异图、PresentMon 间距）。
 - **上游 0.6.0 观察（2026-11-16）**：上游把 DLSS SR 重写为 SDK 无关化（运行时加载驱动 NGX + vtable ABI 手声明 + dlss_fetch.c 下载 nvngx_dlss.dll + 异步录制线程重建），dlss.cpp 被删。合并需把 fork 的 FG 三钩子（settled/generation/hold）重接到新 dlss.c——待办，未开始。
+
+### 3.13 上游 Alpha 6 合并、DLSS FG 移植与 0.6.0 发布（2026-11-16）
+- **合并 be87586**：upstream Alpha 6（0.6.0）并入 `simplified`。DLSS SR 被上游重写为 SDK 无关化（运行时从驱动加载 NGX、vtable ABI 手声明、dlss_fetch 运行时下载 nvngx_dlss.dll、录制线程异步重建），fork 的 SDK 静态导入方案退役；fork 的 FG 三钩子（settled/generation/hold）重接到新 dlss.c。
+- **DLSS FG 移植 da84e80**：新核心共享层 `dlss_core.h`（dlss.c 暴露已加载 NGX），fg_dlss.cpp 免 SDK 重写（DLSSG 参数名手声明，feature id 11）；NGX 调用搬进录制线程（rec_custom，与 SR job 串行）；0.5.4 会话法则逐字保留。真机验证：创建→冷静重建→5400+ 帧评估，47 生成/94 呈现 fps，零崩溃。
+- **修复**：销毁前 rec_drain + 视图缓存随销毁清空（窗口/全屏往返崩溃 32989af）；尺寸回归且配对完好时自动解禁重建（9088e20）；武装刷新移到 present 线程标题监视器（d9d8589，修「标题页改引擎无效」）；武装要求 SR==DLSS + 引擎行灰选说明（5034387，修「回退 FSR3 仍显示 DLSS 且全行锁死」）；性能面板显示当前引擎（0b603ba）＋游戏内抗锯齿行读取回调改真实设定值（f6e7a5a，修「步进弹回 Off」——0.5.4 起既存的坑，锁定常态下从未暴露）。
+- **发布**：版本号同步 0.6.0（上游 Alpha 6 基线），README 重写（NGX 运行时来自驱动、SDK 只随发布带 DLL、FG 会话语义新文档），tag `v0.6.0-alpha.6`。**0.5.4 作为版本号跳过**：它只是 fork 自带 SDK 导入的 DLSS SR/FG 的过渡里程碑（5e41f5b，无 tag 无发布），上游 0.6.0 官方实现 DLSS 后即被取代，发布序号从 0.5.3-alpha.5 直接进到 0.6.0-alpha.6。未推送（用户节奏）；发布时可把旧 release（v0.5.0/0.5.3-alpha.5）标为 pre-release/outdated。
+- **未做**：Reflex（VK_NV_low_latency2，FG 收官后的下一步）；量化对照（确定性回放 A/B、PresentMon 间距）；v0.5.0-alpha.5 标注过时与否待定。
