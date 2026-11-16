@@ -1052,3 +1052,5 @@ T("Locked while DLSS frame generation runs: change it on the title screen.", "�
 T("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.", "NVIDIA DLSS-G บน RTX 40 ขึ้นไป: การตั้งค่าตัวขยายภาพจะล็อกขณะเล่น")
 T("NVIDIA DLSS-G makes a frame between each two the game draws: about twice the frames on screen, on RTX 40 and newer. The upscaler settings lock while you play: they wait for the title screen.", "NVIDIA DLSS-G สร้างเฟรมแทรกระหว่างสองเฟรมที่เกมวาด: จำนวนเฟรมบนหน้าจอเกือบเท่าตัว บน RTX 40 ขึ้นไป การตั้งค่าตัวขยายภาพจะล็อกขณะเล่น: รอการเปลี่ยนที่หน้าจอชื่อเรื่อง")
 T("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in.", "การสร้างเฟรม DLSS จะเปิดใช้เมื่อเข้าสู่เกม: ตั้งค่าที่หน้าจอชื่อเรื่องแล้วเข้าเกมใหม่")
+T("Locked while DLSS frame generation runs: set it on the title screen, then step back in.", "ถูกล็อกขณะที่การสร้างเฟรม DLSS ทำงาน: ตั้งค่าที่หน้าจอชื่อเรื่องแล้วเข้าเกมใหม่")
+T("Changing it while DLSS frame generation runs retires that generation until the next title screen.", "การเปลี่ยนขณะที่การสร้างเฟรม DLSS ทำงานจะทำให้การสร้างเฟรมหยุด จนกว่าจะกลับสู่หน้าจอชื่อเรื่อง")

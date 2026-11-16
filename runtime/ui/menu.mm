@@ -726,14 +726,21 @@ static void tab_display(void) {
         const int np = graphics_preset_count();
         names[np] = "Custom";
         int p = graphics_preset_current(), cur = p < 0 ? np : p;
+        if (fg_locks_sr())  // (the preset moves render-affecting rows: frozen with the NGX pair)
+            opt_disable_next();
         if (opt_choice("Graphics preset", &cur, names, np + 1, GPRESET_ORIGINAL,
-                       "Sets the draw distance, shadows, upscaler, anti-aliasing, texture filtering and the Advanced "
-                       "options at once. Potato: for weak PCs (nearer, smaller shadows, FSR 1, no bloom or depth of "
-                       "field). Original: as on the console. High and Savage: further and sharper, for faster PCs.", false))
+                       fg_locks_sr()
+                           ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
+                           : "Sets the draw distance, shadows, upscaler, anti-aliasing, texture filtering and the Advanced "
+                           "options at once. Potato: for weak PCs (nearer, smaller shadows, FSR 1, no bloom or depth of "
+                           "field). Original: as on the console. High and Savage: further and sharper, for faster PCs.", false) &&
+            !fg_locks_sr())
             graphics_preset_apply(cur);
     }
     bool fs = g_settings.fullscreen;
-    if (opt_toggle("Fullscreen", &fs, false, "Fills the screen. Also: F11, Alt+Enter or Cmd+Ctrl+F.")) {
+    if (opt_toggle("Fullscreen", &fs, false,
+                   fg_locks_sr() ? tr("Changing it while DLSS frame generation runs retires that generation until the next title screen.")
+                                 : "Fills the screen. Also: F11, Alt+Enter or Cmd+Ctrl+F.")) {
         g_settings.fullscreen = fs;
         g_want_window_apply.store(true);
     }
@@ -742,10 +749,12 @@ static void tab_display(void) {
         int cur = g_settings.fullscreen_mode;
         opt_indent(1);
         if (opt_choice("Fullscreen mode", &cur, names, FSMODE_COUNT, FSMODE_AUTO,
-                       "Automatic: borderless at your display's own size, the display switched to the size chosen at "
-                       "any other.\n\nBorderless: never switches the display; another size is scaled to the screen. "
-                       "Quick to switch away from.\n\nExclusive: the display switched to the size chosen, at its "
-                       "highest refresh rate, its own size too.")) {
+                       fg_locks_sr()
+                           ? tr("Changing it while DLSS frame generation runs retires that generation until the next title screen.")
+                           : "Automatic: borderless at your display's own size, the display switched to the size chosen at "
+                           "any other.\n\nBorderless: never switches the display; another size is scaled to the screen. "
+                           "Quick to switch away from.\n\nExclusive: the display switched to the size chosen, at its "
+                           "highest refresh rate, its own size too.")) {
             g_settings.fullscreen_mode = cur;
             if (g_settings.fullscreen) g_want_window_apply.store(true);
         }
@@ -789,9 +798,12 @@ static void tab_display(void) {
             if (list[i].w == d.w && list[i].h == d.h) def = i;
         }
         char desc[600];
-        snprintf(desc, sizeof desc, tr("The size of the game's window, or of the screen in fullscreen. Only the sizes your "
-                                       "display can show: its own first, then grouped by shape. Any shape other than 16:9 "
-                                       "is filled with Fill wide screens on; off, it keeps 16:9 with bars.\n\nYour display: %d x %d."), desk.w, desk.h);
+        if (fg_locks_sr())  // (a size pick re-makes the render targets: the pair retires)
+            snprintf(desc, sizeof desc, "%s", tr("Changing it while DLSS frame generation runs retires that generation until the next title screen."));
+        else
+            snprintf(desc, sizeof desc, tr("The size of the game's window, or of the screen in fullscreen. Only the sizes your "
+                                           "display can show: its own first, then grouped by shape. Any shape other than 16:9 "
+                                           "is filled with Fill wide screens on; off, it keeps 16:9 with bars.\n\nYour display: %d x %d."), desk.w, desk.h);
         bool picked;
         if (opt_list("Window size", &cur, names, n, def, desc, &picked)) {  // (past either end: the other one)
             g_settings.window_w = list[cur].w, g_settings.window_h = list[cur].h;
@@ -976,7 +988,7 @@ static void tab_display(void) {
         for (int i = 0; i < NU; i++) if (ups_value[i] == UPSCALE_DEFAULT) udef = i;
         if (sr_locked) opt_disable_next();  // (DLSS FG pairs with the upscaler's feature until the title screen)
         if (opt_choice_avail("Upscaler", &ui, &shown, ups, avail, NU, udef,
-                             sr_locked ? tr("Locked while DLSS frame generation runs: change it on the title screen.") : ud))
+                             sr_locked ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.") : ud))
             g_settings.upscaler = ups_value[ui];
         // its mode (AMD's scale factors), one step in; greyed when the upscaler is off
         const char *const *modes = k_upscale_modes;
@@ -1001,7 +1013,7 @@ static void tab_display(void) {
         if (g_settings.upscaler == UPSCALE_OFF || sr_locked) opt_disable_next();
         static int mshown = -1;
         opt_choice_avail("Upscaler mode", &g_settings.upscale_quality, &mshown, mn, mavail, UPQ_COUNT, UPQ_QUALITY,
-                         sr_locked ? tr("Locked while DLSS frame generation runs: change it on the title screen.") : md.c_str());
+                         sr_locked ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.") : md.c_str());
         opt_indent(-1);
     }
 #ifdef __APPLE__
@@ -1021,7 +1033,7 @@ static void tab_display(void) {
         bool aa_locked = fg_locks_sr();
         if (aa_locked) opt_disable_next();
         if (opt_choice("Anti-aliasing", &row, aa, AA_ROW_COUNT, AA_ROW_FXAA, aa_locked
-                                                                           ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+                                                                           ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
                                                                            : d.c_str()))
             settings_aa_row_set(row);
     }
@@ -1036,7 +1048,7 @@ static void tab_display(void) {
         bool rs_locked = fg_locks_sr();
         if (rs_locked) opt_disable_next();
         opt_choice("Render scale", &g_settings.render_scale, rscale, RSCALE_COUNT, RSCALE_100,
-                   rs_locked ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+                   rs_locked ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
                              : "Below 100% the game renders at a lower resolution than the window and is scaled up to it: faster, "
                              "but blurrier (50% is a quarter of the pixels, for weak graphics cards). Above 100% it renders at a "
                              "higher resolution and is scaled down to it, the cleanest way to smooth edges and shimmer. 200% is "
@@ -1076,7 +1088,7 @@ static void tab_display(void) {
                          "as at that rate, a little later. In play only: the menus and the map show the game's own frames. Fast "
                          "moves can leave faint smears around Link and what moves on its own.");
             std::string fd = fg_locks_sr()
-                                 ? std::string(tr("Locked while DLSS frame generation runs: change it on the title screen."))
+                                 ? std::string(tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in."))
                                : !framepace_title_ui() && !fg_dlss_armed()
                                  ? std::string(tr("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in."))
                                  : std::string(fgbase);
@@ -1137,7 +1149,7 @@ static void tab_display(void) {
     {   // (it moves the upscaler's input: frozen with the NGX pair)
         bool dr_locked = fg_locks_sr();
         if (dr_locked) opt_disable_next();
-        opt_toggle("Dynamic resolution", &g_settings.dynamic_res, true, dr_locked ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+        opt_toggle("Dynamic resolution", &g_settings.dynamic_res, true, dr_locked ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
                    : "As on the console: the game lowers its 3D "
                    "resolution (down to 1280x720 before upscaling) while frames take long, and raises it again after. "
                    "Off: always the full resolution. On with the Potato preset.");

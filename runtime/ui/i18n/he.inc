@@ -1051,3 +1051,5 @@ T("Locked while DLSS frame generation runs: change it on the title screen.", "ב
 T("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.", "NVIDIA DLSS-G ב-RTX 40 וחדשים יותר: הגדרות האפסקיילר נעולות בזמן משחק.")
 T("NVIDIA DLSS-G makes a frame between each two the game draws: about twice the frames on screen, on RTX 40 and newer. The upscaler settings lock while you play: they wait for the title screen.", "NVIDIA DLSS-G יוצר פריים בין כל שניים שהמשחק מצייר: כפול פריימים על המסך בערך, ב-RTX 40 וחדשים יותר. הגדרות האפסקיילר נעולות בזמן משחק: הן ממתינות למסך הכותרת.")
 T("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in.", "יצירת הפריימים של DLSS מתחילה בכניסה למשחק: להגדיר במסך הכותרת ולהיכנס שוב.")
+T("Locked while DLSS frame generation runs: set it on the title screen, then step back in.", "נעול בזמן שיצירת הפריימים של DLSS פועלת: להגדיר במסך הכותרת ולהיכנס שוב.")
+T("Changing it while DLSS frame generation runs retires that generation until the next title screen.", "שינוי בזמן שיצירת הפריימים של DLSS פועלת משבית אותה עד למסך הכותרת הבא.")

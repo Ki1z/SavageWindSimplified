@@ -1052,3 +1052,5 @@ T("Locked while DLSS frame generation runs: change it on the title screen.", "DL
 T("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.", "NVIDIA DLSS-G（RTX 40 及更新顯示卡）：遊玩時上採樣設定將被鎖定。")
 T("NVIDIA DLSS-G makes a frame between each two the game draws: about twice the frames on screen, on RTX 40 and newer. The upscaler settings lock while you play: they wait for the title screen.", "NVIDIA DLSS-G 在遊戲繪製的每兩幀之間生成一幀：畫面幀數約翻倍（RTX 40 及更新顯示卡）。遊玩期間上採樣設定會鎖定：請回標題畫面變更。")
 T("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in.", "DLSS 幀生成在進入遊戲時啟用：請先在標題畫面設定，再進入遊戲。")
+T("Locked while DLSS frame generation runs: set it on the title screen, then step back in.", "DLSS 幀生成執行期間鎖定：請在標題畫面設定，然後重新進入遊戲。")
+T("Changing it while DLSS frame generation runs retires that generation until the next title screen.", "DLSS 幀生成執行期間更改此項會使幀生成失效：回到標題畫面重新進入遊戲後恢復。")

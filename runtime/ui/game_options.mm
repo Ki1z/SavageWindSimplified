@@ -368,19 +368,34 @@ void build_items(void) {
     // Graphics preset (settings.c k_gpreset): sets rows of the Advanced page; "Custom"
     // (settings matching no preset) is shown, never picked
     Item gp = choice(P_VIDEO, "Graphics preset", "Potato: for weak PCs. Original: as on the console. High and Savage: further and sharper.",
-                     [](const Item &) { return graphics_preset_count() + 1; },
-                     [](const Item &, int x) { return tr(x < graphics_preset_count() ? g_gpreset_names[x] : "Custom"); },
+                     [](const Item &) { return fg_locks_sr() ? 1 : graphics_preset_count() + 1; },
+                     [](const Item &, int x) {
+                         if (fg_locks_sr()) {
+                             int p = graphics_preset_current();
+                             return tr(p < 0 ? "Custom" : g_gpreset_names[p < graphics_preset_count() ? p : GPRESET_ORIGINAL]);
+                         }
+                         return tr(x < graphics_preset_count() ? g_gpreset_names[x] : "Custom");
+                     },
                      [](const Item &) {
+                         if (fg_locks_sr()) return 0;  // (the preset moves render-affecting rows: frozen)
                          int p = graphics_preset_current();
                          return p < 0 ? graphics_preset_count() : p;
                      },
-                     [](const Item &, int x) { graphics_preset_apply(x); }, GPRESET_ORIGINAL);
+                     [](const Item &, int x) { if (!fg_locks_sr()) graphics_preset_apply(x); }, GPRESET_ORIGINAL);
     gp.value_off = [](const Item &, int x) { return x >= graphics_preset_count(); };
+    gp.desc_fn = [](const Item &) {
+        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
+                             : tr("Potato: for weak PCs. Original: as on the console. High and Savage: further and sharper.");
+    };
     v.push_back(gp);
     v.push_back(button(P_VIDEO, "Advanced options", "Draw distance, upscaler, anti-aliasing, shadows, bloom and more.", "Open", A_PAGE, P_VIDEO_ADV));
     v.push_back(toggle(P_VIDEO, "Fullscreen", "Fills the screen. Also F11 or Alt+Enter.",
                        [](const Item &) { return (int)g_settings.fullscreen; },
                        [](const Item &, int x) { g_settings.fullscreen = x; menu_request_window_apply(); }, 0));
+    v.back().desc_fn = [](const Item &) {  // (one line; the switch itself moves the render size)
+        return fg_locks_sr() ? tr("Changing it while DLSS frame generation runs retires that generation until the next title screen.")
+                             : tr("Fills the screen. Also F11 or Alt+Enter.");
+    };
     // Fullscreen mode (settings.h FSMODE_*; runtime/window_size.c winsize_apply)
     v.push_back(choice(P_VIDEO, "Fullscreen mode", "Borderless never switches the display. Exclusive always does.",
                        [](const Item &) { return (int)FSMODE_COUNT; },
@@ -390,6 +405,10 @@ void build_items(void) {
                            g_settings.fullscreen_mode = x;
                            if (g_settings.fullscreen) menu_request_window_apply();
                        }, FSMODE_AUTO));
+    v.back().desc_fn = [](const Item &) {  // (one line; the switch re-makes the render targets)
+        return fg_locks_sr() ? tr("Changing it while DLSS frame generation runs retires that generation until the next title screen.")
+                             : tr("Borderless never switches the display. Exclusive always does.");
+    };
     // Monitor: Automatic, then the displays connected (runtime/window_size.c; listed again at each opening)
     Item disp = choice(P_VIDEO, "Monitor", "The monitor the game is shown on. Automatic: where the window is.",
                        [](const Item &) {
@@ -424,6 +443,8 @@ void build_items(void) {
     };
     ws.desc_fn = [](const Item &) {
         static char buf[256];
+        if (fg_locks_sr())  // (a size pick re-makes the render targets: the pair retires)
+            return tr("Changing it while DLSS frame generation runs retires that generation until the next title screen.");
         WinSize d = winsize_desktop();
         snprintf(buf, sizeof buf, tr("Window or fullscreen size. A: choose it from a list. Your display: %d x %d."), d.w,
                  d.h);
@@ -527,7 +548,7 @@ void build_items(void) {
                        }, AA_ROW_FXAA));
 #endif
     v.back().desc_fn = [](const Item &) {
-        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
                              : tr("Smooths jagged edges. Best at a lower resolution.");
     };
     v.push_back(choice(P_VIDEO_ADV, "Upscaler", "Off: full resolution. AMD FSR 1: renders smaller, then upscales.",
@@ -550,7 +571,7 @@ void build_items(void) {
                        }, UPS_DEFAULT));
     v.back().value_off = [](const Item &, int x) { return !fg_locks_sr() && !upscaler_available(k_ups_value[x]); };
     v.back().desc_fn = [](const Item &) {  // (one line)
-        return fg_locks_sr()                     ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+        return fg_locks_sr()                     ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
              : g_settings.upscaler == UPSCALE_FSR4 ? tr("AMD FSR 4: renders smaller, then rebuilds detail with machine learning.")
              : g_settings.upscaler == UPSCALE_FSR3 ? tr("AMD FSR 3: renders smaller, then rebuilds detail from past frames.")
                                                    : tr("Off: full resolution. AMD FSR 1: renders smaller, then upscales.");
@@ -577,7 +598,7 @@ void build_items(void) {
     mode.reset = [](const Item &) { g_settings.upscale_quality = UPQ_QUALITY; };  // (also while Off)
     mode.desc_fn = [](const Item &) {
         // (one line: the game's description pane is one English line wide)
-        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
              : !upscale_modes_available() ? tr("Renders smaller, then upscales. Coming in a later version.")
                : g_settings.upscaler == UPSCALE_OFF ? tr("Only with an upscaler: choose one above first.")
                                                     : tr("Ultra Quality is the sharpest, Ultra Performance the fastest.");
@@ -641,7 +662,7 @@ void build_items(void) {
         return x == 2 && (!fg_dlss_available() || (!framepace_title_ui() && !fg_dlss_armed()));
     };
     v.back().desc_fn = [](const Item &) {  // (one line)
-        return fg_locks_sr()                             ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+        return fg_locks_sr()                             ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
              : !framepace_title_ui() && !fg_dlss_armed() ? tr("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in.")
              : g_settings.frame_gen_dlss                 ? tr("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.")
                                                          : tr("Twice the frames on screen. Adds a little delay.");
@@ -674,7 +695,7 @@ void build_items(void) {
                            g_settings.dynamic_res = x;
                        }, 1));
     v.back().desc_fn = [](const Item &) {
-        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
                              : tr("Lowers the 3D resolution when a frame takes long, as on the console.");
     };
     if (gamelib_compat())  // (runtime/gamelib.h: a CPU without FMA instructions; simd.h simd_fma_unfused)

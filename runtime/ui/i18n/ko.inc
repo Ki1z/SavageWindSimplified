@@ -1052,3 +1052,5 @@ T("Locked while DLSS frame generation runs: change it on the title screen.", "DL
 T("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.", "NVIDIA DLSS-G(RTX 40 이상): 플레이 중에는 업스케일러 설정이 잠깁니다.")
 T("NVIDIA DLSS-G makes a frame between each two the game draws: about twice the frames on screen, on RTX 40 and newer. The upscaler settings lock while you play: they wait for the title screen.", "NVIDIA DLSS-G가 게임이 그리는 두 프레임 사이에 한 프레임을 만듭니다: 화면 프레임이 약 두 배가 됩니다(RTX 40 이상). 플레이 중에는 업스케일러 설정이 잠기며 제목 화면의 변경을 기다립니다.")
 T("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in.", "DLSS 프레임 생성은 게임에 들어갈 때 활성화됩니다: 제목 화면에서 설정한 뒤 다시 들어가세요.")
+T("Locked while DLSS frame generation runs: set it on the title screen, then step back in.", "DLSS 프레임 생성이 실행되는 동안에는 잠깁니다: 제목 화면에서 설정한 뒤 다시 들어가세요.")
+T("Changing it while DLSS frame generation runs retires that generation until the next title screen.", "DLSS 프레임 생성이 실행되는 동안 변경하면 프레임 생성이 꺼지며, 제목 화면에 다녀온 뒤에야 복구됩니다.")

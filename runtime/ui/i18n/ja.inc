@@ -1052,3 +1052,5 @@ T("Locked while DLSS frame generation runs: change it on the title screen.", "DL
 T("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.", "NVIDIA DLSS-G（RTX 40 以降）：プレイ中はアップスケーラー設定がロックされます。")
 T("NVIDIA DLSS-G makes a frame between each two the game draws: about twice the frames on screen, on RTX 40 and newer. The upscaler settings lock while you play: they wait for the title screen.", "NVIDIA DLSS-G がゲームの2フレームごとに1フレームを生成します：表示フレームレートは約2倍（RTX 40 以降）。プレイ中はアップスケーラー設定がロックされ、タイトル画面での変更を待ちます。")
 T("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in.", "DLSSフレーム生成はゲームに入った時点で有効になります：タイトル画面で設定してから、ゲームに入り直してください。")
+T("Locked while DLSS frame generation runs: set it on the title screen, then step back in.", "DLSSフレーム生成の実行中はロックされています：タイトル画面で設定して、ゲームに入り直してください。")
+T("Changing it while DLSS frame generation runs retires that generation until the next title screen.", "DLSSフレーム生成の実行中に変更するとフレーム生成は無効になり、タイトル画面に戻って入り直すまで復帰しません。")
