@@ -29,6 +29,13 @@ static NVSDK_NGX_Handle *g_feature;
 static unsigned g_w, g_h, g_rw, g_rh;
 static VkFormat g_fmt;
 static bool g_hold_sr;  // (the generation side's size wait: the SR apply skips its rebuilds meanwhile)
+// one gameplay session's bookkeeping (fg_dlss_on_title resets them with the feature)
+static unsigned g_sess_sr_gen0;   // (the runtime generation at this feature's birth)
+static bool g_sess_sr_init;
+static bool g_sess_excursion;     // (the sizes went away since the feature's birth)
+static bool g_sess_poisoned;      // (the SR feature rebuilt while the sizes were off: the pairing is gone)
+static bool g_sess_holding;       // (the size wait is young: SR holds off)
+static unsigned g_sess_held;
 
 bool fg_dlss_holding_sr(void) { return g_hold_sr; }
 
@@ -46,11 +53,19 @@ bool fg_dlss_armed(void) {
 void fg_dlss_on_title(void) {
     // The feature's life is one gameplay session: the title tears it down, so the SR options can
     // change freely there (nothing pairs with them), and the next entry into the game creates it
-    // fresh against whatever SR is now - boot's own sequence, which is the one that survives.
+    // fresh against whatever SR is now - boot's own sequence, which is the one that survives. The
+    // session's bookkeeping resets with it: a retire earned mid-game (an SR rebuild during the
+    // size wait - a window resize or a kept preset change) does not follow the player here.
     if (g_feature) {
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
         fg_dlss_destroy();
     }
+    g_sess_sr_gen0 = 0;
+    g_sess_sr_init = false;
+    g_sess_excursion = false;
+    g_sess_poisoned = false;
+    g_sess_holding = false;
+    g_sess_held = 0;
 }
 
 static const char *rname(NVSDK_NGX_Result r) {
@@ -206,10 +221,6 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     // change, DLSS toggled off and on, the loading screens' own size flaps) marks the same
     // excursion, and the rebuild waits for SR to settle and the frame times to calm down first.
     // SAVAGEWIND_FG_DLSS_RESTART_AT=<frame> still forces a same-size rebuild (the experiment).
-    static unsigned sr_gen0;      // (the runtime generation at this feature's birth)
-    static bool sr_init;
-    static bool excursion;       // (the sizes went away since the feature's birth)
-    static bool poisoned;        // (the SR feature rebuilt while the sizes were off: the pairing is gone)
     static int restart_at = -1;  // (experiment) rebuild mid-gameplay without a settings change anywhere near
     if (restart_at < 0)
         restart_at = getenv("SAVAGEWIND_FG_DLSS_RESTART_AT") ? atoi(getenv("SAVAGEWIND_FG_DLSS_RESTART_AT")) : 0;
@@ -218,44 +229,56 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     // While this hold is on, the SR side skips its apply (fg_dlss_holding_sr): a loading screen's
     // sizes must not rebuild SR - that generation change during the generation side's own size wait
     // is the one sequence the pair never survives. A change that outlasts the hold (a real preset
-    // switch the player keeps) lets SR through after all: it rebuilds, the change is caught below,
-    // and generation retires for the session.
-    static bool holding;
-    static unsigned held;
-    holding = size_changed && ++held <= 600;  // (~5-10 s: a loading screen outlasts the hold, a kept
-    g_hold_sr = holding;                      //  preset change does not)
+    // switch the player keeps, a window resize) lets SR through after all: it rebuilds, the change
+    // is caught below, and generation retires until the title screen resets the session.
+    bool holding = size_changed && ++g_sess_held <= 600;  // (~5-10 s: a loading screen outlasts the
+    g_hold_sr = g_sess_holding = holding;                 //  hold, a kept preset change does not)
     if (size_changed) {
-        excursion = true;
-        if (sr_init && vk_dlss_settled() && sr_gen0 != vk_dlss_generation()) poisoned = !holding;
+        g_sess_excursion = true;
+        if (g_sess_sr_init && vk_dlss_settled() && g_sess_sr_gen0 != vk_dlss_generation()) g_sess_poisoned = !holding;
+        if (!holding) {
+            // The sizes are really staying (a kept preset, a resized window): restart the pair in
+            // place - the title screen's teardown, minus the title screen. The generation feature
+            // goes first (destroying it is the one proven-safe op), SR follows at the new sizes on
+            // the next frames, and the create below arms a fresh feature against them once SR has
+            // settled - boot's sequence, mid-game. The pair is never whole while SR moves.
+            if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+            fg_dlss_destroy();
+            g_sess_sr_init = false;
+            g_sess_excursion = false;
+            g_sess_held = 0;
+            return false;
+        }
         static int said_size;
         if (said_size++ % 600 == 0)
             LOG("[dlss-fg] the image's size is not the feature's (%ux%u): generation pauses until it returns\n",
                 g_w, g_h);
         return false;
     }
-    held = 0;
-    if (poisoned) {
+    g_sess_held = 0;
+    if (g_sess_poisoned) {
         // A super-resolution preset change does this: its sizes move, and while the generation
         // feature waits them out SR rebuilds too. Remaking the generation feature after that
         // crashed every time it was tried (same-size, settled, calm - all of it), so this pairing
-        // retires; the next launch makes both features against the new settings together.
+        // retires; the title screen resets the session, and the next entry into the game makes
+        // both features against the new settings together.
         static int said_poison;
         if (!said_poison++)
             LOG("[dlss-fg] the SR feature rebuilt while the sizes were off: generation stays off until "
-                "the next launch\n");
+                "the next title screen\n");
         return false;
     }
     bool settled = vk_dlss_settled();
     // (SR's create retries through quality fallbacks and its input size changes with the scene's:
     //  every such rebuild makes the generation feature stale, so any settled generation change is
     //  an excursion like a size one)
-    if (sr_init && settled && sr_gen0 != vk_dlss_generation()) {
-        excursion = true;
-        sr_gen0 = vk_dlss_generation();  // (the rebuild below is the resync)
+    if (g_sess_sr_init && settled && g_sess_sr_gen0 != vk_dlss_generation()) {
+        g_sess_excursion = true;
+        g_sess_sr_gen0 = vk_dlss_generation();  // (the rebuild below is the resync)
     }
-    if (!sr_init) {
-        sr_gen0 = vk_dlss_generation();
-        sr_init = true;
+    if (!g_sess_sr_init) {
+        g_sess_sr_gen0 = vk_dlss_generation();
+        g_sess_sr_init = true;
     }
     // The rebuild waits for calm: every crash among these rebuilds happened next to a loading
     // stream - giant frame gaps leave the snippet's worker in its transition state, and releasing
@@ -264,19 +287,19 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     // it says the history is invalid, not that the runtime is busy.)
     static unsigned quiet;
     quiet = f->frame_ms < 50.0f ? quiet + 1 : 0;
-    if (g_feature && excursion && (!settled || quiet < 90)) return false;
-    if (g_feature && excursion) {
+    if (g_feature && g_sess_excursion && (!settled || quiet < 90)) return false;
+    if (g_feature && g_sess_excursion) {
         LOG("[dlss-fg] rebuilding after the SR feature or the sizes changed\n");
         // (the snippet's cubins hold GPU work: releasing mid-flight crashes inside nvngx_dlssg.dll)
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
         fg_dlss_destroy();
-        excursion = false;
+        g_sess_excursion = false;
     }
     if (g_feature && !settled) return false;  // (SR is mid-rebuild or just took its history-reset
     // frame: the runtime is not whole, and an evaluate beside it races its worker - the 0xf8 reads)
-    if (!sr_init) {
-        sr_gen0 = vk_dlss_generation();
-        sr_init = true;
+    if (!g_sess_sr_init) {
+        g_sess_sr_gen0 = vk_dlss_generation();
+        g_sess_sr_init = true;
     }
     if (g_feature && restart_at > 0 && (long long)f->frame_id == restart_at) {
         LOG("[dlss-fg] rebuilding on request (frame %lld)\n", (long long)f->frame_id);
