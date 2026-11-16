@@ -257,15 +257,19 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     }
     g_sess_held = 0;
     if (g_sess_poisoned) {
-        // A super-resolution preset change does this: its sizes move, and while the generation
-        // feature waits them out SR rebuilds too. Remaking the generation feature after that
-        // crashed every time it was tried (same-size, settled, calm - all of it), so this pairing
-        // retires; the title screen resets the session, and the next entry into the game makes
-        // both features against the new settings together.
-        static int said_poison;
-        if (!said_poison++)
-            LOG("[dlss-fg] the SR feature rebuilt while the sizes were off: generation stays off until "
-                "the next title screen\n");
+        // An SR rebuild slipped past the hold - a display-mode switch re-inits the render targets
+        // without passing through dlss_scene's apply - and remaking the pair beside it is the one
+        // thing that crashed. The title screen's teardown is the safe way out of exactly this
+        // shape, so take it where the player stands: destroy first (the one proven-safe op), let
+        // SR settle at whatever it rebuilt into, and the create below arms fresh against it -
+        // boot's sequence, mid-game, the pair never whole while SR moves.
+        LOG("[dlss-fg] the SR feature rebuilt while the sizes were off: restarting the pair\n");
+        if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+        fg_dlss_destroy();
+        g_sess_sr_init = false;
+        g_sess_excursion = false;
+        g_sess_poisoned = false;
+        g_sess_held = 0;
         return false;
     }
     bool settled = vk_dlss_settled();
