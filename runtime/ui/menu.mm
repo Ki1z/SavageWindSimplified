@@ -633,10 +633,25 @@ extern "C" void renderer_get_scale(float *sx, float *sy);
 extern "C" void renderer_get_scene_scale(float *sx, float *sy);
 extern "C" bool renderer_gpu_rtx(void);  // (vulkan/device.c, metal.m)
 extern "C" volatile int g_fg_active;     // (hle/framepace.c: the last presented frame was generated)
+#ifndef __APPLE__
+#include "../nvn/vulkan/fg_dlss.h"
+#endif
 // Video > Upscaler mode's names, by UPQ_*
 static const char *const k_upscale_modes[UPQ_COUNT] = {"Ultra Quality", "Quality", "Balanced", "Performance", "Ultra Performance"};
 extern "C" {
 #include "../nvn/output_scale.h"
+#include "../framepace.h"
+}
+
+// DLSS's frame generation pairs with the upscaler's NGX feature for a whole gameplay session, so
+// while it runs in the game the upscaler rows lock (the title screen, where the feature is torn
+// down, keeps them free).
+static bool fg_locks_sr(void) {
+#ifndef __APPLE__
+    return !framepace_title_ui() && g_settings.frame_gen && g_settings.frame_gen_dlss;
+#else
+    return false;
+#endif
 }
 
 #ifndef __APPLE__
@@ -951,8 +966,9 @@ static void tab_display(void) {
         enum { NU = sizeof ups_value / sizeof ups_value[0] };
         bool avail[NU];
         int ui = 0;
+        bool sr_locked = fg_locks_sr();
         for (int i = 0; i < NU; i++) {
-            avail[i] = upscaler_available(ups_value[i]);
+            avail[i] = upscaler_available(ups_value[i]) && !sr_locked;
             if (ups_value[i] == g_settings.upscaler) ui = i;
         }
         static int shown = -1;
@@ -968,7 +984,7 @@ static void tab_display(void) {
         for (int i = 0; i < UPQ_COUNT; i++) {
             mode_names[i] = modes_ok ? tr(modes[i]) : std::string(tr(modes[i])) + " " + tr("(coming soon)");
             mn[i] = mode_names[i].c_str();
-            mavail[i] = modes_ok && upscale_mode_offered(i);
+            mavail[i] = modes_ok && upscale_mode_offered(i) && !sr_locked;
         }
         float sx, sy;  // the 3D scene's size (BOTW docked: 1600 x 900 times its scale)
         renderer_get_scene_scale(&sx, &sy);
@@ -999,7 +1015,12 @@ static void tab_display(void) {
             " " + tr("TAA: blends each frame with the ones before it, following the game's motion, so edges stay "
                      "smooth and stop shimmering; slightly softer, use it with Sharpening.");
         int row = settings_aa_row();
-        if (opt_choice("Anti-aliasing", &row, aa, AA_ROW_COUNT, AA_ROW_FXAA, d.c_str())) settings_aa_row_set(row);
+        bool aa_locked = fg_locks_sr();
+        if (aa_locked) opt_disable_next();
+        if (opt_choice("Anti-aliasing", &row, aa, AA_ROW_COUNT, AA_ROW_FXAA, aa_locked
+                                                                           ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+                                                                           : d.c_str()))
+            settings_aa_row_set(row);
     }
     // the wet lighting passes' sun glare (maxwell/translate.c maxwell_wet_lighting)
     opt_toggle("Wet grass fix", &g_settings.wet_fix, false,
@@ -1030,12 +1051,32 @@ static void tab_display(void) {
                    "AMD FidelityFX CAS sharpens the 3D image after the upscaler (or at the window's resolution with the "
                    "upscaler off), before the HUD is drawn over it: edges get crisper without halos. Most useful with "
                    "AMD FSR 1.", false);
-        // AMD FSR 3 frame generation (vulkan/framegen.cpp; the frame rate counts the presented frames: framepace.c)
-        opt_toggle("Frame generation (AMD FSR 3)", &g_settings.frame_gen, false,
-                   "AMD FSR 3 makes a frame between each two the game draws: about twice the frames on screen. The "
-                   "frame rate above counts them all, so the game itself draws half of it (60 with 120) and the "
-                   "controls answer as at that rate, a little later. In play only: the menus and the map show the "
-                   "game's own frames. Fast moves can leave faint smears around Link and what moves on its own.");
+        // Frame generation (vulkan/framegen.cpp, fg_dlss.cpp): FSR 3's own, or NVIDIA's DLSS-G on
+        // RTX 40 and newer. DLSS's feature lives one gameplay session, so while it runs the game's
+        // upscaler settings lock until the title screen (above); the frame rate counts the
+        // presented frames (framepace.c).
+        {
+            std::string off = tr("Off"), fsr3g = tr("FSR 3"), dlssg = tr("DLSS");
+            const char *fgn[] = {off.c_str(), fsr3g.c_str(), dlssg.c_str()};
+            bool fgav[3] = {true, true, fg_dlss_available()};
+            int fv = g_settings.frame_gen ? (g_settings.frame_gen_dlss ? 2 : 1) : 0;
+            const char *fgbase =
+                fv == 2 && fg_dlss_available()
+                    ? tr("NVIDIA DLSS-G makes a frame between each two the game draws: about twice the frames on screen, on "
+                         "RTX 40 and newer. The upscaler settings lock while you play: they wait for the title screen.")
+                    : tr("AMD FSR 3 makes a frame between each two the game draws: about twice the frames on screen. The frame "
+                         "rate above counts them all, so the game itself draws half of it (60 with 120) and the controls answer "
+                         "as at that rate, a little later. In play only: the menus and the map show the game's own frames. Fast "
+                         "moves can leave faint smears around Link and what moves on its own.");
+            std::string fd = std::string(fgbase) +
+                             (fg_locks_sr() ? std::string("\n\n") + tr("Locked while DLSS frame generation runs: change it on the title screen.")
+                                            : std::string());
+            static int fgshown = -1;
+            if (opt_choice_avail("Frame generation", &fv, &fgshown, fgn, fgav, 3, 0, fd.c_str())) {
+                g_settings.frame_gen = fv != 0;
+                g_settings.frame_gen_dlss = fv == 2;
+            }
+        }
     }
 #endif
     opt_toggle("Asynchronous shaders", &g_settings.async_shaders, true,

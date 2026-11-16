@@ -370,6 +370,8 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
 #else
 
 bool fg_dlss_available(void) { return false; }
+bool fg_dlss_holding_sr(void) { return false; }
+void fg_dlss_on_title(void) {}
 bool fg_dlss_dispatch(VkCommandBuffer, const FgConfig *, const FgFrame *) { return false; }
 void fg_dlss_destroy(void) {}
 

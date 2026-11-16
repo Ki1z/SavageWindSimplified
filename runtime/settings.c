@@ -274,6 +274,7 @@ void settings_load(void) {
         else if (!strcmp(key, "game_fxaa")) g_settings.game_fxaa = atoi(val) != 0;
         else if (!strcmp(key, "wet_fix")) g_settings.wet_fix = atoi(val) != 0;
         else if (!strcmp(key, "frame_generation")) g_settings.frame_gen = atoi(val) != 0;
+        else if (!strcmp(key, "frame_generation_dlss")) g_settings.frame_gen_dlss = atoi(val) != 0;
         else if (!strcmp(key, "sharpening")) {  // (percent, in steps of 10)
             int p = atoi(val);
             g_settings.sharpening = p < 0 ? 0 : p > 100 ? 10 : (p + 5) / 10;
@@ -521,6 +522,7 @@ void settings_save(void) {
     fprintf(f, "texture_lod_bias = %s\n", k_tex_lod_bias[lb >= 0 && lb < TEX_LOD_COUNT ? lb : TEX_LOD_DEFAULT]);
     fprintf(f, "sharpening = %d\n", g_settings.sharpening * 10);
     fprintf(f, "frame_generation = %d\n", g_settings.frame_gen ? 1 : 0);
+    fprintf(f, "frame_generation_dlss = %d\n", g_settings.frame_gen_dlss ? 1 : 0);
     fprintf(f, "rumble = %d\n", g_settings.rumble);
     fprintf(f, "rumble_strength = %d\n", g_settings.rumble_strength);
     fprintf(f, "freecam_sticks = %d\n", g_settings.freecam_sticks);

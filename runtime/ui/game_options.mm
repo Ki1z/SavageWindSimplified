@@ -35,6 +35,7 @@ extern "C" {
 #include "../input_bind.h"
 #include "../language.h"
 #include "../game_sites.h"
+#include "../framepace.h"
 #include "../nvn/output_scale.h"
 #include "../problem_report.h"
 #include "../settings.h"
@@ -42,6 +43,9 @@ extern "C" {
 #include "../color_grade.h"
 #include "../pc_cursor.h"
 #include "../window_size.h"
+#ifndef __APPLE__
+#include "../nvn/vulkan/fg_dlss.h"
+#endif
 void guest_call(Cpu *, uint64_t);
 Cpu *kernel_current_cpu(void);
 void rt_request_reboot(int kind);           // runtime/main.c (1: start the game again)
@@ -52,6 +56,11 @@ bool renderer_gpu_rtx(void);                // vulkan/device.c, metal.m
 }
 
 namespace {
+
+// DLSS's frame generation pairs with the upscaler's NGX feature for a whole gameplay session, so
+// while it runs in the game the upscaler rows lock (the title screen, where the feature is torn
+// down, keeps them free).
+bool fg_locks_sr(void) { return !framepace_title_ui() && g_settings.frame_gen && g_settings.frame_gen_dlss; }
 
 // ---- guest memory (main is mapped at its runtime address: plain pointers)
 uint32_t rd32(uint64_t a) { return *(volatile uint32_t *)(uintptr_t)a; }
@@ -511,6 +520,11 @@ void build_items(void) {
                        [](const Item &) { return settings_aa_row(); },
                        [](const Item &, int x) { settings_aa_row_set(x); }, AA_ROW_FXAA));
 #endif
+    v.back().value_off = [](const Item &, int) { return fg_locks_sr(); };  // (DLSS FG pairs with it)
+    v.back().desc_fn = [](const Item &) {
+        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+                             : tr("Smooths jagged edges. Best at a lower resolution.");
+    };
     v.push_back(choice(P_VIDEO_ADV, "Upscaler", "Off: full resolution. AMD FSR 1: renders smaller, then upscales.",
                        [](const Item &) { return N(k_ups_value); }, ups_label,
                        [](const Item &) {
@@ -519,9 +533,12 @@ void build_items(void) {
                            return 0;
                        },
                        [](const Item &, int x) { g_settings.upscaler = k_ups_value[x]; }, UPS_DEFAULT));
-    v.back().value_off = [](const Item &, int x) { return !upscaler_available(k_ups_value[x]); };
+    v.back().value_off = [](const Item &, int x) {
+        return !upscaler_available(k_ups_value[x]) || fg_locks_sr();
+    };
     v.back().desc_fn = [](const Item &) {  // (one line)
-        return g_settings.upscaler == UPSCALE_FSR4 ? tr("AMD FSR 4: renders smaller, then rebuilds detail with machine learning.")
+        return fg_locks_sr()                     ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+             : g_settings.upscaler == UPSCALE_FSR4 ? tr("AMD FSR 4: renders smaller, then rebuilds detail with machine learning.")
              : g_settings.upscaler == UPSCALE_FSR3 ? tr("AMD FSR 3: renders smaller, then rebuilds detail from past frames.")
                                                    : tr("Off: full resolution. AMD FSR 1: renders smaller, then upscales.");
     };
@@ -541,12 +558,14 @@ void build_items(void) {
                        },
                        UPQ_QUALITY);
     mode.value_off = [](const Item &, int x) {
-        return !upscale_modes_available() || g_settings.upscaler == UPSCALE_OFF || !upscale_mode_offered(x);
+        return !upscale_modes_available() || g_settings.upscaler == UPSCALE_OFF || !upscale_mode_offered(x) ||
+               fg_locks_sr();
     };
     mode.reset = [](const Item &) { g_settings.upscale_quality = UPQ_QUALITY; };  // (also while Off)
     mode.desc_fn = [](const Item &) {
         // (one line: the game's description pane is one English line wide)
-        return !upscale_modes_available()           ? tr("Renders smaller, then upscales. Coming in a later version.")
+        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+             : !upscale_modes_available() ? tr("Renders smaller, then upscales. Coming in a later version.")
                : g_settings.upscaler == UPSCALE_OFF ? tr("Only with an upscaler: choose one above first.")
                                                     : tr("Ultra Quality is the sharpest, Ultra Performance the fastest.");
     };
@@ -586,10 +605,26 @@ void build_items(void) {
                        },
                        [](const Item &) { return g_settings.sharpening; },
                        [](const Item &, int x) { g_settings.sharpening = x; }, 0));
-    // AMD FSR 3 frame generation (vulkan/framegen.cpp)
-    v.push_back(toggle(P_VIDEO_ADV, "Frame generation (AMD FSR 3)", "Twice the frames on screen. Adds a little delay.",
-                       [](const Item &) { return (int)g_settings.frame_gen; },
-                       [](const Item &, int x) { g_settings.frame_gen = x; }, 0));
+    // Frame generation (vulkan/framegen.cpp, fg_dlss.cpp): FSR 3's own, or NVIDIA's DLSS-G (RTX 40
+    // and newer). DLSS's feature lives one gameplay session, so while it runs the game's upscaler
+    // settings are locked (the rows above grey out) until the title screen remakes it.
+    static const int k_fg_value[] = {0, 1, 2};
+    v.push_back(choice(P_VIDEO_ADV, "Frame generation", "Twice the frames on screen. Adds a little delay.",
+                       [](const Item &) { return N(k_fg_value); },
+                       [](const Item &, int x) { return x == 2 ? tr("DLSS") : x ? tr("FSR 3") : tr("Off"); },
+                       [](const Item &) { return g_settings.frame_gen ? (g_settings.frame_gen_dlss ? 2 : 1) : 0; },
+                       [](const Item &, int x) {
+                           g_settings.frame_gen = x != 0;
+                           g_settings.frame_gen_dlss = x == 2;
+                       }, 0));
+    v.back().value_off = [](const Item &, int x) {
+        return x == 2 && (!fg_dlss_available() || fg_locks_sr());  // (DLSS pairs for a session: on from the title)
+    };
+    v.back().desc_fn = [](const Item &) {  // (one line)
+        return fg_locks_sr()                ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+             : g_settings.frame_gen_dlss    ? tr("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.")
+                                            : tr("Twice the frames on screen. Adds a little delay.");
+    };
 #endif
     v.push_back(toggle(P_VIDEO_ADV, "Asynchronous shaders", "On: no stutter, but some effects appear late.",
                        [](const Item &) { return (int)g_settings.async_shaders; },

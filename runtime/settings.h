@@ -94,6 +94,9 @@ typedef struct {
     int tex_lod_bias;    // TEX_LOD_*: texture LOD bias, 0 = default (0.0), 1 = sharp (-0.5), 2 = sharper (-1.0)
     int sharpening;      // AMD CAS sharpening of the 3D image, 0 (off) .. 10 (100%) (vulkan/exec.c scene_post)
     bool frame_gen;      // AMD FSR 3 frame generation: a frame made between each two the game draws (vulkan/framegen.cpp)
+    bool frame_gen_dlss; // its engine: NVIDIA DLSS-G (fg_dlss.cpp) instead of FSR 3; needs DLSS for the upscaler and
+                         // an RTX 40 series card; its feature lives one gameplay session, so the game's SR settings
+                         // are locked while it is on until the title screen
     float volume;        // master volume, 1 = 100%
     int audio_output;    // AUDIO_OUT_*: Stereo, Surround 5.1, or 3D Headphones
     bool reverb;         // room reverb effect
