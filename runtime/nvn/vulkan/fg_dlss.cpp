@@ -220,6 +220,8 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         fg_dlss_destroy();
         excursion = false;
     }
+    if (g_feature && !settled) return false;  // (SR is mid-rebuild or just took its history-reset
+    // frame: the runtime is not whole, and an evaluate beside it races its worker - the 0xf8 reads)
     if (!sr_init) {
         sr_gen0 = vk_dlss_generation();
         sr_init = true;
