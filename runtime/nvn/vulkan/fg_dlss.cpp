@@ -236,19 +236,8 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     if (size_changed) {
         g_sess_excursion = true;
         if (g_sess_sr_init && vk_dlss_settled() && g_sess_sr_gen0 != vk_dlss_generation()) g_sess_poisoned = !holding;
-        if (!holding) {
-            // The sizes are really staying (a kept preset, a resized window): restart the pair in
-            // place - the title screen's teardown, minus the title screen. The generation feature
-            // goes first (destroying it is the one proven-safe op), SR follows at the new sizes on
-            // the next frames, and the create below arms a fresh feature against them once SR has
-            // settled - boot's sequence, mid-game. The pair is never whole while SR moves.
-            if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
-            fg_dlss_destroy();
-            g_sess_sr_init = false;
-            g_sess_excursion = false;
-            g_sess_held = 0;
-            return false;
-        }
+        if (!holding)
+            g_sess_poisoned = true;  // (the sizes are really staying: see the poisoned branch below)
         static int said_size;
         if (said_size++ % 600 == 0)
             LOG("[dlss-fg] the image's size is not the feature's (%ux%u): generation pauses until it returns\n",
@@ -257,19 +246,17 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     }
     g_sess_held = 0;
     if (g_sess_poisoned) {
-        // An SR rebuild slipped past the hold - a display-mode switch re-inits the render targets
-        // without passing through dlss_scene's apply - and remaking the pair beside it is the one
-        // thing that crashed. The title screen's teardown is the safe way out of exactly this
-        // shape, so take it where the player stands: destroy first (the one proven-safe op), let
-        // SR settle at whatever it rebuilt into, and the create below arms fresh against it -
-        // boot's sequence, mid-game, the pair never whole while SR moves.
-        LOG("[dlss-fg] the SR feature rebuilt while the sizes were off: restarting the pair\n");
-        if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
-        fg_dlss_destroy();
-        g_sess_sr_init = false;
-        g_sess_excursion = false;
-        g_sess_poisoned = false;
-        g_sess_held = 0;
+        // A render size that really moved (a kept preset, a resized window) or an SR rebuild that
+        // slipped past the hold - a display-mode switch re-inits the render targets on a path that
+        // never passes through the scene apply - leaves the pair built against different sizes.
+        // Remaking the generation feature beside the rebuilt SR crashed every time it was tried in
+        // play, however calm; the fresh-create windows that survive are boot and the title screen.
+        // So the pairing retires until the player is back on the title, which tears the feature
+        // down and resets this session; the next entry into the game makes both against the new
+        // sizes together.
+        static int said_poison;
+        if (!said_poison++)
+            LOG("[dlss-fg] the render size moved: generation stays off until the next title screen\n");
         return false;
     }
     bool settled = vk_dlss_settled();
