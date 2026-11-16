@@ -1172,6 +1172,27 @@ static const char *builtin_src(const char *name, int *stage) {
                "layout(location = 0) out vec4 o;\n"
                "void main() { o = vec4(texture(t, uv).rgb, 1.0); }\n";
     }
+    // Accessibility > Colour vision (runtime/colour_vision.h; exec.c vk_present_draw): present.frag with the
+    // correction's 3x3 matrix applied in linear light, rows r0..r2 after the vertex shader's 32 bytes. r0.w = 1: the
+    // picture is already linear (HDR's float picture), else it holds sRGB-encoded values (the game's 8-bit image, read
+    // raw), decoded and encoded again around the matrix.
+    if (!strcmp(name, "present_cvd.frag")) {
+        *stage = STAGE_FRAGMENT;
+        return "#version 450\n"
+               "layout(set = 0, binding = 0) uniform sampler2D t;\n"
+               "layout(push_constant) uniform P { layout(offset = 32) vec4 r0; vec4 r1; vec4 r2; } pc;\n"
+               "layout(location = 0) in vec2 uv;\n"
+               "layout(location = 0) out vec4 o;\n"
+               "vec3 enc(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }\n"
+               "vec3 dec(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }\n"
+               "void main() {\n"
+               "  vec3 c = texture(t, uv).rgb;\n"
+               "  bool lin = pc.r0.w > 0.5;\n"
+               "  vec3 l = lin ? c : dec(clamp(c, 0.0, 1.0));\n"
+               "  vec3 m = max(vec3(dot(pc.r0.xyz, l), dot(pc.r1.xyz, l), dot(pc.r2.xyz, l)), vec3(0.0));\n"
+               "  o = vec4(lin ? m : enc(min(m, vec3(1.0))), 1.0);\n"
+               "}\n";
+    }
     // ---- post passes before the present (Video tab "Anti-aliasing" / "Upscaler"): exec.c vk_present_draw.
     // Each draws a fullscreen triangle into an image the size of its output; push constants: two vec4.
     if (!strcmp(name, "post.vert")) {
@@ -1472,7 +1493,7 @@ static const char *builtin_src(const char *name, int *stage) {
                "  float peak = -1.0 / mix(8.0, 5.0, clamp(pc.a.x, 0.0, 1.0));\n"
                "  float w = amp.g * peak;\n"
                "  vec3 r = (b * w + d * w + f * w + h * w + e) / (1.0 + 4.0 * w);\n"
-               "  o = vec4(clamp(r, 0.0, 1.0), e4.a);\n"
+               "  o = vec4(max(r, 0.0), e4.a);\n"
                "}\n";
     }
     // Colour grading of the 3D scene (Video > Colour; exec.c scene_post, runtime/color_grade.h). The scene holds
@@ -1494,6 +1515,7 @@ static const char *builtin_src(const char *name, int *stage) {
     "  vec3 c = s.rgb * pc.g.rgb;\n"                                                                            \
     "  float y = dot(c, vec3(0.2126, 0.7152, 0.0722));\n"                                                       \
     "  c = max(mix(vec3(y), c, pc.a.x), 0.0);\n"                                                                \
+    "  vec3 hdr = max(c - vec3(1.0), vec3(0.0));\n"                                                             \
     "  vec3 x = enc(min(c, 1.0));\n"                                                                            \
     "  vec3 lo = 0.5 * pow(2.0 * x, vec3(pc.g.w)), hi = 1.0 - 0.5 * pow(max(2.0 - 2.0 * x, 0.0), vec3(pc.g.w));\n" \
     "  x = mix(lo, hi, step(0.5, x));\n"                                                                        \
@@ -1502,7 +1524,7 @@ static const char *builtin_src(const char *name, int *stage) {
     "  vec3 l = texture(t1, u * ((pc.a.z - 1.0) / pc.a.z) + 0.5 / pc.a.z).rgb;\n"                               \
     "  x = mix(x, clamp(l, 0.0, 1.0), pc.a.y);\n"                                                               \
     "#endif\n"                                                                                                  \
-    "  o = vec4(dec(x), s.a);\n"                                                                                \
+    "  o = vec4(dec(x) + hdr, s.a);\n"                                                                          \
     "}\n"
         if (name[5] == '_')
             return "#version 450\n#define LUT 1\nlayout(set = 0, binding = 1) uniform sampler3D t1;\n" GRADE_BODY;
