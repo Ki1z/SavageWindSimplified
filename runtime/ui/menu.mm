@@ -652,9 +652,11 @@ extern "C" {
 // DLSS's frame generation pairs with the upscaler's NGX feature for a whole gameplay session, so
 // while it runs in the game the upscaler rows lock (the title screen, where the feature is torn
 // down, keeps them free).
+static bool g_menu_in_game = false;  // (menu_tabs_draw's caller says which: the launcher's
+                                     // configuration draws the same tabs before the game exists)
 static bool fg_locks_sr(void) {
 #ifndef __APPLE__
-    return !framepace_title_ui() && fg_dlss_armed();
+    return g_menu_in_game && !framepace_title_ui() && fg_dlss_armed();
 #else
     return false;
 #endif
@@ -1103,7 +1105,7 @@ static void tab_display(void) {
             std::string off = tr("Off"), fsr3g = tr("FSR 3"), dlssg = tr("DLSS");
             const char *fgn[] = {off.c_str(), fsr3g.c_str(), dlssg.c_str()};
             bool fgav[3] = {true, true, fg_dlss_available() && g_settings.upscaler == UPSCALE_DLSS &&
-                                          (framepace_title_ui() || fg_dlss_armed())};  // (the engine needs
+                                          (g_menu_in_game && (framepace_title_ui() || fg_dlss_armed()))};  // (the engine needs
                                           // DLSS for the upscaler: with anything else FSR 3 runs instead)
             int fv = g_settings.frame_gen ? (g_settings.frame_gen_dlss ? 2 : 1) : 0;
             const char *fgbase =
@@ -1118,7 +1120,7 @@ static void tab_display(void) {
                                  ? std::string(tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in."))
                                : fv == 2 && g_settings.upscaler != UPSCALE_DLSS
                                  ? std::string(tr("DLSS-G needs DLSS for the upscaler: the FSR 3 engine runs instead."))
-                               : !framepace_title_ui() && !fg_dlss_armed()
+                               : !(g_menu_in_game && (framepace_title_ui() || fg_dlss_armed()))
                                  ? std::string(tr("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in."))
                                  : std::string(fgbase);
             static int fgshown = -1;
@@ -2138,6 +2140,7 @@ static void tabs_body(float scale, bool in_game, void (*prelaunch)(float)) {
 }
 
 void menu_tabs_draw(float scale, ImFont *font, ImFont *font_big, bool in_game, void (*prelaunch)(float)) {
+    g_menu_in_game = in_game;  // (the rows' frame generation state reads the guest only in the game)
     ImFont *f0 = g_font, *f1 = g_font_big;
     g_font = font, g_font_big = font_big;
     ImGuiStyle saved = ImGui::GetStyle();  // the menu's look (the start screen has its own style)

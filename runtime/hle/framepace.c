@@ -60,6 +60,12 @@ extern volatile int g_movie_fps;      // runtime/hle/movie.c: the playing movie'
 #define VF(T, base, off) (*(T *)(uintptr_t)((base) + (off)))
 #define PAUSE_STATE g_site.pause_state  // (u32: 0 playing, 2 in the pause menu or the map)
 
+// The guest's memory only exists once the game is loaded: the launcher's configuration draws the same
+// menu tabs (menu.mm) before any of it is mapped, and their rows ask these through fg_locks_sr.
+static bool guest_up(void) {
+    return PAUSE_STATE != 0;
+}
+
 static int env_int(const char *name, int def) {
     const char *e = getenv(name);
     return e && *e ? atoi(e) : def;
@@ -75,7 +81,7 @@ bool framepace_on(void) {
 // The menus: the game is paused (pause menu, map), or the title screen's menu is up (screen 1 in the UI screen
 // manager [screen_mgr]: +0x28 count, +0x30 screens by id).
 static bool in_menu(void) {
-    if (*(uint32_t *)(uintptr_t)PAUSE_STATE) return true;
+    if (guest_up() && *(uint32_t *)(uintptr_t)PAUSE_STATE) return true;
     uint64_t mgr = *(uint64_t *)(uintptr_t)g_site.screen_mgr;
     return mgr && VF(uint32_t, mgr, 0x28) > 1 && VF(uint64_t, mgr, 0x30) &&
            *(uint64_t *)(uintptr_t)(VF(uint64_t, mgr, 0x30) + 8);
@@ -169,7 +175,7 @@ bool framepace_dialogue_ui(void) {
 // (screens: 1 the start screen, 0x38 its load and confirmation menus; 0x38 can also be used over a paused game)
 bool framepace_title_ui(void) {
     static int prev = -1;
-    int pause = *(uint32_t *)(uintptr_t)PAUSE_STATE;
+    int pause = guest_up() ? *(uint32_t *)(uintptr_t)PAUSE_STATE : 0;
     int now = !pause && (screen_up(1) || screen_up(0x38));
     if (now != prev) {  // (the frame generation engine freezes between title visits: transitions explain it)
         LOG("[ui] title screen %d -> %d (pause state %d, start screen %s)\n", prev, now, pause,
@@ -184,7 +190,7 @@ bool framepace_dlc_ui(void) { return screen_up(0x3f); }  // (screen 0x3f)
 bool framepace_loading_ui(void) { return screen_up(0x55); }
 
 // (pause state 2: the pause menu's pages and the map; 4 is the quick menus over the game)
-bool framepace_menu_ui(void) { return *(uint32_t *)(uintptr_t)PAUSE_STATE == 2; }
+bool framepace_menu_ui(void) { return guest_up() && *(uint32_t *)(uintptr_t)PAUSE_STATE == 2; }
 bool framepace_map_ui(void) {
     uint64_t screen = screen_at(0x2a);
     int mode = ui_layout_map_mode(screen);
@@ -197,7 +203,7 @@ bool framepace_map_ui(void) {
     uint64_t map = VF(uint64_t, arr, 8 * 0x2a);
     return map && VF(uint8_t, map, 0xfe) == 2;  // same active map screen as pc_cursor.c
 }
-bool framepace_quick_ui(void) { return *(uint32_t *)(uintptr_t)PAUSE_STATE == 4; }
+bool framepace_quick_ui(void) { return guest_up() && *(uint32_t *)(uintptr_t)PAUSE_STATE == 4; }
 // A shop's panes, where they are (#599): ShopInfo_00 over a counter, ShopBtnList5_00 / ShopBtnList20_00 and ShopBG_00
 // at a merchant, ShopHorse_00 at a stable, and the list's selection box (BoxCursorTV) while one is up. The game makes
 // these screens when a shop's panel opens and drops them when it closes; each is in the screen manager [screen_mgr]
