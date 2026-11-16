@@ -1134,9 +1134,14 @@ static void tab_display(void) {
                "little faster, a flatter image.");
     opt_toggle("Depth of field", &g_settings.depth_of_field, true, "The game blurs the far distance a little. Off: sharp "
                "out to the horizon, a little faster.");
-    opt_toggle("Dynamic resolution", &g_settings.dynamic_res, true, "As on the console: the game lowers its 3D "
-               "resolution (down to 1280x720 before upscaling) while frames take long, and raises it again after. "
-               "Off: always the full resolution. On with the Potato preset.");
+    {   // (it moves the upscaler's input: frozen with the NGX pair)
+        bool dr_locked = fg_locks_sr();
+        if (dr_locked) opt_disable_next();
+        opt_toggle("Dynamic resolution", &g_settings.dynamic_res, true, dr_locked ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+                   : "As on the console: the game lowers its 3D "
+                   "resolution (down to 1280x720 before upscaling) while frames take long, and raises it again after. "
+                   "Off: always the full resolution. On with the Potato preset.");
+    }
     if (gamelib_compat())  // (runtime/gamelib.h: a CPU without FMA instructions; simd.h simd_fma_unfused)
         opt_toggle("Fast math", &g_settings.fast_fma, true, "Your CPU has no FMA instructions, so the game's math runs "
                    "in software. On: about 10% faster; some results round a tiny bit differently from the console, "

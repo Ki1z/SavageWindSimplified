@@ -669,7 +669,14 @@ void build_items(void) {
                        [](const Item &, int x) { g_settings.depth_of_field = x; }, 1));
     v.push_back(toggle(P_VIDEO_ADV, "Dynamic resolution", "Lowers the 3D resolution when a frame takes long, as on the console.",
                        [](const Item &) { return (int)g_settings.dynamic_res; },
-                       [](const Item &, int x) { g_settings.dynamic_res = x; }, 1));
+                       [](const Item &, int x) {
+                           if (fg_locks_sr()) return;  // (it moves the upscaler's input: frozen with the NGX pair)
+                           g_settings.dynamic_res = x;
+                       }, 1));
+    v.back().desc_fn = [](const Item &) {
+        return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+                             : tr("Lowers the 3D resolution when a frame takes long, as on the console.");
+    };
     if (gamelib_compat())  // (runtime/gamelib.h: a CPU without FMA instructions; simd.h simd_fma_unfused)
         v.push_back(toggle(P_VIDEO_ADV, "Fast math", "Your CPU has no FMA instructions. On: faster, some results round a tiny bit differently from the console.",
                            [](const Item &) { return (int)g_settings.fast_fma; },
