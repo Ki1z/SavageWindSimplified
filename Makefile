@@ -406,7 +406,7 @@ WIN_B    := build/win-release
 NSTOOL_SRC ?= ../nstool
 # NVIDIA's DLSS SDK checkout (github.com/NVIDIA/DLSS at its v310.9.1 tag): make dist ships its nvngx_dlss.dll and
 # nvngx_dlssg.dll beside the exe under its licence. Nothing is compiled or linked from it any more: NGX itself is
-# the NVIDIA driver's (runtime/nvn/vulkan/dlss.c), and frame generation waits for its port to that loader.
+# the NVIDIA driver's (runtime/nvn/vulkan/dlss.c), which frame generation shares (fg_dlss.cpp through dlss_core.h).
 DLSS_SDK ?= ../DLSS
 
 $(B)/nstool/nstool.exe:

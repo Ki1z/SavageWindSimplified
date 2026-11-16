@@ -9,6 +9,7 @@
 // slots 0-7 and the Get overloads in 8-15, each group in reverse declaration order (MSVC's layout, the Windows core's).
 // vtable_ok checks that layout with a set-then-get round trip before anything relies on it.
 #include "dlss.h"
+#include "dlss_core.h"  // the core's surface, shared with fg_dlss.cpp (frame generation)
 #include "record.h"
 
 #include <math.h>
@@ -33,24 +34,12 @@ enum { NGX_DLSS_IS_HDR = 1 << 0, NGX_DLSS_MV_LOWRES = 1 << 1 };
 // The application id NVIDIA's own DLSS samples use for applications without an NVIDIA-issued id
 #define NGX_APP_ID 231313132ull
 
-typedef struct NgxParam NgxParam;
-typedef struct NgxHandle NgxHandle;
-typedef struct { void *slot[17]; } NgxParamVtbl;
-struct NgxParam { const NgxParamVtbl *vt; };
-typedef struct {  // NVSDK_NGX_Resource_VK, an image view
-    union {
-        struct {
-            VkImageView view;
-            VkImage image;
-            VkImageSubresourceRange range;
-            VkFormat format;
-            unsigned width, height;
-        } img;
-        struct { VkBuffer buffer; unsigned bytes; } buf;
-    } r;
-    int type;  // 0 image view, 1 buffer
-    bool rw;
-} NgxResourceVK;
+typedef struct NgxParamVtbl NgxParamVtbl;
+struct DlssNgxParam { const NgxParamVtbl *vt; };  // (dlss_core.h's opaque object, completed here)
+typedef DlssNgxParam NgxParam;
+typedef DlssNgxHandle NgxHandle;
+typedef DlssNgxResourceVK NgxResourceVK;  // (the shared struct: ABI-identical for both callers)
+struct NgxParamVtbl { void *slot[17]; };  // (the tag the forward typedef above names)
 typedef NgxResult (*PFN_Init)(unsigned long long app, const wchar_t *path, VkInstance, VkPhysicalDevice, VkDevice,
                               PFN_vkGetInstanceProcAddr, PFN_vkGetDeviceProcAddr, int version, const NgxParam *);
 typedef NgxResult (*PFN_ReqExt)(unsigned *ni, const char ***ie, unsigned *nd, const char ***de);
@@ -268,6 +257,44 @@ void vk_dlss_shutdown(void) {
     g_initialized = false;
 }
 
+// ================================================================== the core, shared (dlss_core.h)
+static _Atomic unsigned g_generation;  // bumped when SR's feature is (re)made: the pair's identity
+static _Atomic int g_settle;           // frames until the runtime is whole after a rebuild or a reset
+
+bool vk_dlss_core_up(void) { return g_ngx_up; }
+
+DlssNgxParam *vk_dlss_capability_params(void) { return g_ngx_up ? (DlssNgxParam *)g_capability_params : NULL; }
+
+DlssNgxParam *vk_dlss_alloc_params(void) {
+    NgxParam *p = NULL;
+    return NGX_OK(N.alloc_params(&p)) && p ? (DlssNgxParam *)p : NULL;
+}
+void vk_dlss_free_params(DlssNgxParam *p) { if (p) N.destroy_params((NgxParam *)p); }
+
+bool vk_dlss_param_set_i(DlssNgxParam *p, const char *n, int v) { if (p) p_seti((NgxParam *)p, n, v); return p != NULL; }
+bool vk_dlss_param_set_u(DlssNgxParam *p, const char *n, unsigned v) { if (p) p_setu((NgxParam *)p, n, v); return p != NULL; }
+bool vk_dlss_param_set_f(DlssNgxParam *p, const char *n, float v) { if (p) p_setf((NgxParam *)p, n, v); return p != NULL; }
+bool vk_dlss_param_set_p(DlssNgxParam *p, const char *n, void *v) { if (p) p_setp((NgxParam *)p, n, v); return p != NULL; }
+bool vk_dlss_param_get_i(const DlssNgxParam *p, const char *n, int *v) { return p && p_geti((const NgxParam *)p, n, v); }
+bool vk_dlss_param_get_u(const DlssNgxParam *p, const char *n, unsigned *v) { return p && p_getu((const NgxParam *)p, n, v); }
+bool vk_dlss_param_get_f(const DlssNgxParam *p, const char *n, float *v) { return p && p_getf((const NgxParam *)p, n, v); }
+bool vk_dlss_param_get_p(const DlssNgxParam *p, const char *n, void **v) { return p && p_getp((const NgxParam *)p, n, v); }
+
+bool vk_dlss_feature_create(VkCommandBuffer cb, int feature_id, DlssNgxParam *p, DlssNgxHandle **out) {
+    NgxHandle *h = NULL;
+    if (!p || !NGX_OK(N.create(cb, feature_id, (NgxParam *)p, &h)) || !h) return false;
+    *out = (DlssNgxHandle *)h;
+    return true;
+}
+bool vk_dlss_feature_evaluate(VkCommandBuffer cb, const DlssNgxHandle *h, DlssNgxParam *p) {
+    return h && p && NGX_OK(N.evaluate(cb, (const NgxHandle *)h, (NgxParam *)p, NULL));
+}
+void vk_dlss_feature_release(DlssNgxHandle *h) { if (h) N.release((NgxHandle *)h); }
+
+unsigned vk_dlss_generation(void) { return atomic_load(&g_generation); }
+
+bool vk_dlss_settled(void) { return g_available && atomic_load(&g_settle) <= 0; }
+
 static NgxResourceVK image_resource(TexBackend *b, VkFormat f, bool rw) {
     static const VkComponentMapping id = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
                                           VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY};
@@ -386,6 +413,8 @@ static void dlss_run(void *arg) {
         }
         g_in_w = cw; g_in_h = ch; g_out_w = ow; g_out_h = oh;
         g_quality = j->quality; g_color_format = cf; g_output_format = of;
+        atomic_fetch_add(&g_generation, 1);  // (a new feature: the generation side's recorded one is stale)
+        atomic_store(&g_settle, 2);          // (its create frame and the one after it: not whole yet)
     }
     NgxResourceVK in_color = j->color, in_depth = j->depth, in_motion = j->motion, out = j->out;
     NgxParam *p = g_params;
@@ -406,7 +435,11 @@ static void dlss_run(void *arg) {
     if (!ok(N.evaluate(j->cb, g_feature, p, NULL), "evaluate")) {
         release_feature();
         atomic_store(&g_failed, 1);
+        return;
     }
+    // (the history-reset frame leaves SR's own accumulation invalid: the pair waits it out too)
+    if (j->reset) atomic_store(&g_settle, 2);
+    else if (atomic_load(&g_settle) > 0) atomic_fetch_sub(&g_settle, 1);
 }
 
 // NGX records into cb itself and may wait for the device: like FSR 3, the recorder thread makes the calls, in their
