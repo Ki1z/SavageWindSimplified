@@ -980,11 +980,15 @@ void build_items(void) {
                            g_settings.frame_gen_dlss = x == 2;
                        }, 0));
     v.back().value_off = [](const Item &, int x) {
-        // (DLSS pairs for a session: greyed while playing without it, and on from the title)
-        return x == 2 && (!fg_dlss_available() || (!framepace_title_ui() && !fg_dlss_armed()));
+        // (DLSS pairs for a session: greyed while playing without it, and on from the title; the
+        // engine needs DLSS for the upscaler - with anything else the FSR 3 engine runs instead)
+        return x == 2 && (!fg_dlss_available() || g_settings.upscaler != UPSCALE_DLSS ||
+                          (!framepace_title_ui() && !fg_dlss_armed()));
     };
     v.back().desc_fn = [](const Item &) {  // (one line)
         return fg_locks_sr()                             ? tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in.")
+             : g_settings.frame_gen && g_settings.frame_gen_dlss && g_settings.upscaler != UPSCALE_DLSS
+                                                       ? tr("DLSS-G needs DLSS for the upscaler: the FSR 3 engine runs instead.")
              : !framepace_title_ui() && !fg_dlss_armed() ? tr("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in.")
              : g_settings.frame_gen_dlss                 ? tr("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.")
                                                          : tr("Twice the frames on screen. Adds a little delay.");

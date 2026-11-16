@@ -88,7 +88,11 @@ bool fg_dlss_armed(void) {
     // the choice waits, per the row's hint).
     static int armed = -1;
     if (armed < 0 || framepace_title_ui()) {
-        int now = g_settings.frame_gen && g_settings.frame_gen_dlss && fg_dlss_available();
+        // DLSS-G pairs with the upscaler's NGX feature: with any other upscaler (or none) the engine
+        // choice waits instead of arming - exec.c's dlss_wanted would decline it anyway, but arming
+        // would lock the upscaler rows for a session whose pair cannot even exist.
+        int now = g_settings.frame_gen && g_settings.frame_gen_dlss && fg_dlss_available() &&
+                  g_settings.upscaler == UPSCALE_DLSS;
         static int said_armed = -1;
         if (now != said_armed) {
             LOG("[dlss-fg] engine armed: %s\n", now ? "DLSS-G" : "FSR 3");

@@ -1102,7 +1102,9 @@ static void tab_display(void) {
         {
             std::string off = tr("Off"), fsr3g = tr("FSR 3"), dlssg = tr("DLSS");
             const char *fgn[] = {off.c_str(), fsr3g.c_str(), dlssg.c_str()};
-            bool fgav[3] = {true, true, fg_dlss_available() && (framepace_title_ui() || fg_dlss_armed())};
+            bool fgav[3] = {true, true, fg_dlss_available() && g_settings.upscaler == UPSCALE_DLSS &&
+                                          (framepace_title_ui() || fg_dlss_armed())};  // (the engine needs
+                                          // DLSS for the upscaler: with anything else FSR 3 runs instead)
             int fv = g_settings.frame_gen ? (g_settings.frame_gen_dlss ? 2 : 1) : 0;
             const char *fgbase =
                 fv == 2 && fg_dlss_available()
@@ -1114,6 +1116,8 @@ static void tab_display(void) {
                          "moves can leave faint smears around Link and what moves on its own.");
             std::string fd = fg_locks_sr()
                                  ? std::string(tr("Locked while DLSS frame generation runs: set it on the title screen, then step back in."))
+                               : fv == 2 && g_settings.upscaler != UPSCALE_DLSS
+                                 ? std::string(tr("DLSS-G needs DLSS for the upscaler: the FSR 3 engine runs instead."))
                                : !framepace_title_ui() && !fg_dlss_armed()
                                  ? std::string(tr("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in."))
                                  : std::string(fgbase);
