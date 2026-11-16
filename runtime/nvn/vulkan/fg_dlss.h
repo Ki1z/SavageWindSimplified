@@ -11,6 +11,10 @@ extern "C" {
 // NGX runtime is up (vk_dlss_init has run) and the feature says it can run here.
 bool fg_dlss_available(void);
 
+// The generation side is waiting a size excursion out: the SR apply should skip its rebuilds for
+// now (dlss_scene falls back to plain upscaling) so SR's feature never moves under the pair.
+bool fg_dlss_holding_sr(void);
+
 // The same contract as framegen.h's fg_dispatch: records the interpolated frame between the previous
 // call's real frame and this one into f->out. false: failed (logged); the caller falls back.
 bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f);

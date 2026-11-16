@@ -23,6 +23,9 @@ static NVSDK_NGX_Parameter *g_params;
 static NVSDK_NGX_Handle *g_feature;
 static unsigned g_w, g_h, g_rw, g_rh;
 static VkFormat g_fmt;
+static bool g_hold_sr;  // (the generation side's size wait: the SR apply skips its rebuilds meanwhile)
+
+bool fg_dlss_holding_sr(void) { return g_hold_sr; }
 
 static const char *rname(NVSDK_NGX_Result r) {
     switch (r) {
@@ -180,17 +183,40 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     static unsigned sr_gen0;      // (the runtime generation at this feature's birth)
     static bool sr_init;
     static bool excursion;       // (the sizes went away since the feature's birth)
+    static bool poisoned;        // (the SR feature rebuilt while the sizes were off: the pairing is gone)
     static int restart_at = -1;  // (experiment) rebuild mid-gameplay without a settings change anywhere near
     if (restart_at < 0)
         restart_at = getenv("SAVAGEWIND_FG_DLSS_RESTART_AT") ? atoi(getenv("SAVAGEWIND_FG_DLSS_RESTART_AT")) : 0;
     bool size_changed = g_feature && (g_w != c->display_w || g_h != c->display_h || g_rw != c->render_w ||
                                       g_rh != c->render_h || g_fmt != c->color_format);
+    // While this hold is on, the SR side skips its apply (fg_dlss_holding_sr): a loading screen's
+    // sizes must not rebuild SR - that generation change during the generation side's own size wait
+    // is the one sequence the pair never survives. A change that outlasts the hold (a real preset
+    // switch the player keeps) lets SR through after all: it rebuilds, the change is caught below,
+    // and generation retires for the session.
+    static bool holding;
+    static unsigned held;
+    holding = size_changed && ++held <= 600;  // (~5-10 s: a loading screen outlasts the hold, a kept
+    g_hold_sr = holding;                      //  preset change does not)
     if (size_changed) {
         excursion = true;
+        if (sr_init && vk_dlss_settled() && sr_gen0 != vk_dlss_generation()) poisoned = !holding;
         static int said_size;
         if (said_size++ % 600 == 0)
             LOG("[dlss-fg] the image's size is not the feature's (%ux%u): generation pauses until it returns\n",
                 g_w, g_h);
+        return false;
+    }
+    held = 0;
+    if (poisoned) {
+        // A super-resolution preset change does this: its sizes move, and while the generation
+        // feature waits them out SR rebuilds too. Remaking the generation feature after that
+        // crashed every time it was tried (same-size, settled, calm - all of it), so this pairing
+        // retires; the next launch makes both features against the new settings together.
+        static int said_poison;
+        if (!said_poison++)
+            LOG("[dlss-fg] the SR feature rebuilt while the sizes were off: generation stays off until "
+                "the next launch\n");
         return false;
     }
     bool settled = vk_dlss_settled();

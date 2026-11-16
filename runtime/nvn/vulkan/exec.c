@@ -10630,6 +10630,10 @@ static bool dlss_wanted(void) { return g_settings.upscaler == UPSCALE_DLSS && vk
 // color (the scene, graded or not) to ow x oh: DLSS's output (post image 9), or NULL (no depth of the scene's size, or
 // NGX failed: FSR 1 for this frame; FSR 1 from then on when NGX can't make DLSS at all).
 static TexBackend *dlss_scene(VkCommandBuffer cb, TexBackend *color, uint32_t ow, uint32_t oh) {
+    // The generation side is waiting its own size excursion out: an SR rebuild right now (the loading
+    // screen's sizes differ) is the one sequence the pair never survives, so hold SR's feature and
+    // let the frame fall back to plain upscaling for the stretch.
+    if (fg_dlss_holding_sr()) return NULL;
     const VkFormat of = VK_FORMAT_R16G16B16A16_SFLOAT;  // (NGX writes a storage image, whatever the scene's format)
     VkFormatProperties fp;
     vkGetPhysicalDeviceFormatProperties(g_vk.phys, of, &fp);
