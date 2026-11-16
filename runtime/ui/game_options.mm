@@ -36,6 +36,7 @@ extern "C" {
 #include "../language.h"
 #include "../game_sites.h"
 #include "../framepace.h"
+#include "../rt.h"  // (LOG: the lock transitions)
 #include "../nvn/output_scale.h"
 #include "../problem_report.h"
 #include "../motion.h"
@@ -63,7 +64,15 @@ namespace {
 // DLSS's frame generation pairs with the upscaler's NGX feature for a whole gameplay session, so
 // while it is armed in the game the upscaler rows freeze (the title screen, where the feature is
 // torn down, keeps them free).
-bool fg_locks_sr(void) { return !framepace_title_ui() && fg_dlss_armed(); }
+bool fg_locks_sr(void) {
+    bool now = !framepace_title_ui() && fg_dlss_armed();
+    static int said = -1;  // (transitions explain lock reports: which state the row saw, and when)
+    if ((int)now != said) {
+        LOG("[ui] fg_locks_sr -> %d\n", (int)now);
+        said = (int)now;
+    }
+    return now;
+}
 
 // ---- guest memory (main is mapped at its runtime address: plain pointers)
 uint32_t rd32(uint64_t a) { return *(volatile uint32_t *)(uintptr_t)a; }
