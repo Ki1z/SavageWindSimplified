@@ -855,7 +855,8 @@ void build_items(void) {
                        [](const Item &) { return g_settings.antialias; },
                        [](const Item &, int x) { g_settings.antialias = x; }, AA_OFF));
 #else
-                       [](const Item &) { return 0; },  // (locked: the row shows the one frozen value)
+                       [](const Item &) { return settings_aa_row(); },  // (the row redraws from this: a
+                       // constant here snapped the display back to Off every time the player stepped it)
                        [](const Item &, int x) {
                            if (fg_locks_sr()) return;  // (frozen: stores nothing)
                            settings_aa_row_set(x);
