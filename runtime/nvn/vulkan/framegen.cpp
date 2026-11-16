@@ -81,6 +81,7 @@ static struct {
 } g;
 
 FgVk g_fg_vk;
+volatile int g_fg_engine;  // (exec.c: the engine the frame's generation belongs to - framegen.h)
 
 #define TRY(x) do { FfxErrorCode e_ = (x); if (e_ != FFX_OK) { LOG("[fg] %s failed: %#x\n", #x, (unsigned)e_); return false; } } while (0)
 

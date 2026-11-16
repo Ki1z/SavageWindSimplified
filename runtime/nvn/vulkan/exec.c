@@ -10823,6 +10823,7 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
             // title screen runs without it: the feature's life is one gameplay session, and on the
             // title the SR options stay free to change.
             bool fg_dlss_now = (dlss_fg == 2 ? true : dlss_fg == -2 ? false : fg_dlss_armed()) && dlss_wanted() && !framepace_title_ui();
+            g_fg_engine = fg_dlss_now ? 2 : 1;  // (the performance overlay names the engine)
             if (test == 2) {
                 o = hl;
                 ok = true;

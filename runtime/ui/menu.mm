@@ -636,6 +636,7 @@ extern "C" void renderer_get_scale(float *sx, float *sy);
 extern "C" void renderer_get_scene_scale(float *sx, float *sy);
 extern "C" bool renderer_gpu_rtx(void);  // (vulkan/device.c, metal.m)
 extern "C" volatile int g_fg_active;     // (hle/framepace.c: the last presented frame was generated)
+#include "../nvn/vulkan/framegen.h"      // (g_fg_engine: which engine's generation it was)
 #ifndef __APPLE__
 #include "../nvn/vulkan/fg_dlss.h"
 #endif
@@ -1864,7 +1865,9 @@ static void perf_overlay_draw(ImGuiIO &io, float scale) {
         }
     }
 #endif
-    if (g_fg_active) line += std::string(line.empty() ? "" : " | ") + tr("Frame generation on");
+    if (g_fg_active)
+        line += std::string(line.empty() ? "" : " | ") + tr("Frame generation") + ": " +
+                (g_fg_engine == 2 ? tr("DLSS-G") : tr("FSR 3"));
     if (!line.empty()) ImGui::TextDisabled("%s", line.c_str());
     // Link's coordinates; no line at all while there is no Link or the game is in a scene (title, loading, movie, event).
     // Axis letters are not translated.

@@ -48,6 +48,9 @@ typedef struct {
     void (*wait_idle)(void);  // the GPU idle (before the contexts are made again)
 } FgVk;
 extern FgVk g_fg_vk;
+// The engine the frame's generation belongs to, set where exec.c dispatches it: 1 FSR 3, 2 DLSS-G (the performance
+// overlay names it). 0 before the first generated frame; only read beside g_fg_active.
+extern volatile int g_fg_engine;
 
 // Records the interpolated frame between the previous call's frame and this one into f->out. false: failed (logged).
 bool fg_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f);
