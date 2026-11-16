@@ -206,10 +206,12 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         sr_init = true;
     }
     // The rebuild waits for calm: every crash among these rebuilds happened next to a loading
-    // stream - giant frame gaps put the snippet's worker in its transition state, and releasing or
-    // evaluating against that races it. Ninety consecutive sane frames (~1.5 s of gameplay) clear it.
+    // stream - giant frame gaps leave the snippet's worker in its transition state, and releasing
+    // or evaluating against that races it. Ninety consecutive sane frames (~1.5 s of gameplay)
+    // clear it. (The scene-cut flag is not part of this: the title screen holds it constantly, and
+    // it says the history is invalid, not that the runtime is busy.)
     static unsigned quiet;
-    quiet = f->frame_ms < 50.0f && !f->reset ? quiet + 1 : 0;
+    quiet = f->frame_ms < 50.0f ? quiet + 1 : 0;
     if (g_feature && excursion && (!settled || quiet < 90)) return false;
     if (g_feature && excursion) {
         LOG("[dlss-fg] rebuilding after the SR feature or the sizes changed\n");
