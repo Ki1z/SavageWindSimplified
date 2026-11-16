@@ -391,6 +391,15 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         return false;
     }
     g_sess_held = 0;
+    if (g_sess_poisoned && g_sess_sr_init && vk_dlss_settled() && g_sess_sr_gen0 == vk_dlss_generation()) {
+        // A visit that came back: the sizes match the feature again, and the hold kept SR off for the
+        // whole trip, so nothing rebuilt under the pairing - it is intact. That is the same-size
+        // rebuild the play tests proved safe. Only a move SR actually rebuilt against (a kept preset,
+        // a mode switch that re-inits the render targets past the scene apply) stays retired.
+        g_sess_poisoned = false;
+        g_sess_excursion = true;
+        LOG("[dlss-fg] the sizes returned: resuming with a rebuild\n");
+    }
     if (g_sess_poisoned) {
         // A render size that really moved (a kept preset, a resized window) or an SR rebuild that
         // slipped past the hold - a display-mode switch re-inits the render targets on a path that
