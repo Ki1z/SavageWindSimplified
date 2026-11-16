@@ -224,7 +224,9 @@ bool vk_dlss_apply(VkCommandBuffer cb, TexBackend *color, TexBackend *depth, Tex
     if (!g_feature || g_in_w != color->width || g_in_h != color->height || g_out_w != output->width ||
         g_out_h != output->height || g_quality != quality || g_color_format != color->format ||
         g_output_format != output->format) {
-        release_rebuilt();
+        // (the first create replaces nothing: no rebuild to report to the generation side)
+        if (g_feature) release_rebuilt();
+        else release_feature();
         NVSDK_NGX_DLSS_Create_Params create = {};
         create.Feature.InWidth = color->width;
         create.Feature.InHeight = color->height;
