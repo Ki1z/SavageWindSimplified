@@ -512,30 +512,37 @@ void build_items(void) {
                        },
                        [](const Item &, int x) { g_settings.draw_distance = k_drawdist_order[x]; }, 1));
     v.push_back(choice(P_VIDEO_ADV, "Anti-aliasing", "Smooths jagged edges. Best at a lower resolution.",
-                       [](const Item &) { return N(k_aa); }, [](const Item &, int x) { return tr(k_aa[x]); },
+                       [](const Item &) { return fg_locks_sr() ? 1 : N(k_aa); },
+                       [](const Item &, int x) {
+                           return fg_locks_sr() ? tr(k_aa[settings_aa_row()]) : tr(k_aa[x]);
+                       },
 #ifdef __APPLE__
                        [](const Item &) { return g_settings.antialias; },
                        [](const Item &, int x) { g_settings.antialias = x; }, AA_OFF));
 #else
-                       [](const Item &) { return settings_aa_row(); },
+                       [](const Item &) { return 0; },  // (locked: the row shows the one frozen value)
                        [](const Item &, int x) { settings_aa_row_set(x); }, AA_ROW_FXAA));
 #endif
-    v.back().value_off = [](const Item &, int) { return fg_locks_sr(); };  // (DLSS FG pairs with it)
     v.back().desc_fn = [](const Item &) {
         return fg_locks_sr() ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
                              : tr("Smooths jagged edges. Best at a lower resolution.");
     };
     v.push_back(choice(P_VIDEO_ADV, "Upscaler", "Off: full resolution. AMD FSR 1: renders smaller, then upscales.",
-                       [](const Item &) { return N(k_ups_value); }, ups_label,
+                       [](const Item &) { return fg_locks_sr() ? 1 : N(k_ups_value); },
+                       [](const Item &, int x) {
+                           if (!fg_locks_sr()) return ups_label({}, x);
+                           for (int i = 0; i < N(k_ups_value); i++)
+                               if (k_ups_value[i] == g_settings.upscaler) return ups_label({}, i);
+                           return ups_label({}, x);
+                       },
                        [](const Item &) {
+                           if (fg_locks_sr()) return 0;
                            for (int i = 0; i < N(k_ups_value); i++)
                                if (k_ups_value[i] == g_settings.upscaler) return i;
                            return 0;
                        },
                        [](const Item &, int x) { g_settings.upscaler = k_ups_value[x]; }, UPS_DEFAULT));
-    v.back().value_off = [](const Item &, int x) {
-        return !upscaler_available(k_ups_value[x]) || fg_locks_sr();
-    };
+    v.back().value_off = [](const Item &, int x) { return !fg_locks_sr() && !upscaler_available(k_ups_value[x]); };
     v.back().desc_fn = [](const Item &) {  // (one line)
         return fg_locks_sr()                     ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
              : g_settings.upscaler == UPSCALE_FSR4 ? tr("AMD FSR 4: renders smaller, then rebuilds detail with machine learning.")
@@ -546,20 +553,20 @@ void build_items(void) {
     // gives the row its range at each redraw, and a change of the Upscaler row redraws the page); the mode chosen
     // before stays stored and comes back with an upscaler.
     Item mode = choice(P_VIDEO_ADV, "Upscaler mode", "",
-                       [](const Item &) { return g_settings.upscaler == UPSCALE_OFF ? 1 : N(k_modes); },
+                       [](const Item &) { return g_settings.upscaler == UPSCALE_OFF || fg_locks_sr() ? 1 : N(k_modes); },
                        [](const Item &, int x) {
+                           if (fg_locks_sr()) return tr(k_modes[g_settings.upscale_quality]);
                            return g_settings.upscaler == UPSCALE_OFF ? tr("Off")
                                   : upscale_modes_available()        ? tr(k_modes[x])
                                                                      : soon(k_modes[x]);
                        },
-                       [](const Item &) { return g_settings.upscaler == UPSCALE_OFF ? 0 : g_settings.upscale_quality; },
+                       [](const Item &) { return g_settings.upscaler == UPSCALE_OFF || fg_locks_sr() ? 0 : g_settings.upscale_quality; },
                        [](const Item &, int x) {
-                           if (g_settings.upscaler != UPSCALE_OFF) g_settings.upscale_quality = x;
+                           if (g_settings.upscaler != UPSCALE_OFF && !fg_locks_sr()) g_settings.upscale_quality = x;
                        },
                        UPQ_QUALITY);
     mode.value_off = [](const Item &, int x) {
-        return !upscale_modes_available() || g_settings.upscaler == UPSCALE_OFF || !upscale_mode_offered(x) ||
-               fg_locks_sr();
+        return !fg_locks_sr() && (!upscale_modes_available() || g_settings.upscaler == UPSCALE_OFF || !upscale_mode_offered(x));
     };
     mode.reset = [](const Item &) { g_settings.upscale_quality = UPQ_QUALITY; };  // (also while Off)
     mode.desc_fn = [](const Item &) {
@@ -610,15 +617,17 @@ void build_items(void) {
     // settings are locked (the rows above grey out) until the title screen remakes it.
     static const int k_fg_value[] = {0, 1, 2};
     v.push_back(choice(P_VIDEO_ADV, "Frame generation", "Twice the frames on screen. Adds a little delay.",
-                       [](const Item &) { return N(k_fg_value); },
-                       [](const Item &, int x) { return x == 2 ? tr("DLSS") : x ? tr("FSR 3") : tr("Off"); },
-                       [](const Item &) { return g_settings.frame_gen ? (g_settings.frame_gen_dlss ? 2 : 1) : 0; },
+                       [](const Item &) { return fg_locks_sr() ? 1 : N(k_fg_value); },
+                       [](const Item &, int x) {
+                           return x == 2 || fg_locks_sr() ? tr("DLSS") : x ? tr("FSR 3") : tr("Off");
+                       },
+                       [](const Item &) { return fg_locks_sr() ? 0 : g_settings.frame_gen ? (g_settings.frame_gen_dlss ? 2 : 1) : 0; },
                        [](const Item &, int x) {
                            g_settings.frame_gen = x != 0;
                            g_settings.frame_gen_dlss = x == 2;
                        }, 0));
     v.back().value_off = [](const Item &, int x) {
-        return x == 2 && (!fg_dlss_available() || fg_locks_sr());  // (DLSS pairs for a session: on from the title)
+        return x == 2 && !fg_locks_sr() && !fg_dlss_available();  // (DLSS pairs for a session: on from the title)
     };
     v.back().desc_fn = [](const Item &) {  // (one line)
         return fg_locks_sr()                ? tr("Locked while DLSS frame generation runs: change it on the title screen.")

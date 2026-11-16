@@ -968,12 +968,13 @@ static void tab_display(void) {
         int ui = 0;
         bool sr_locked = fg_locks_sr();
         for (int i = 0; i < NU; i++) {
-            avail[i] = upscaler_available(ups_value[i]) && !sr_locked;
+            avail[i] = upscaler_available(ups_value[i]);
             if (ups_value[i] == g_settings.upscaler) ui = i;
         }
         static int shown = -1;
         int udef = 0;  // (the reset value: UPSCALE_DEFAULT)
         for (int i = 0; i < NU; i++) if (ups_value[i] == UPSCALE_DEFAULT) udef = i;
+        if (sr_locked) opt_disable_next();  // (DLSS FG pairs with the upscaler's feature until the title screen)
         if (opt_choice_avail("Upscaler", &ui, &shown, ups, avail, NU, udef, ud)) g_settings.upscaler = ups_value[ui];
         // its mode (AMD's scale factors), one step in; greyed when the upscaler is off
         const char *const *modes = k_upscale_modes;
@@ -984,7 +985,7 @@ static void tab_display(void) {
         for (int i = 0; i < UPQ_COUNT; i++) {
             mode_names[i] = modes_ok ? tr(modes[i]) : std::string(tr(modes[i])) + " " + tr("(coming soon)");
             mn[i] = mode_names[i].c_str();
-            mavail[i] = modes_ok && upscale_mode_offered(i) && !sr_locked;
+            mavail[i] = modes_ok && upscale_mode_offered(i);
         }
         float sx, sy;  // the 3D scene's size (BOTW docked: 1600 x 900 times its scale)
         renderer_get_scene_scale(&sx, &sy);
@@ -995,7 +996,7 @@ static void tab_display(void) {
                                         "2x, Ultra Performance 3x. Smaller is faster and softer.")) +
                          "\n\n" + (modes_ok ? rendering : tr("Coming in a later version."));
         opt_indent(1);
-        if (g_settings.upscaler == UPSCALE_OFF) opt_disable_next();
+        if (g_settings.upscaler == UPSCALE_OFF || sr_locked) opt_disable_next();
         static int mshown = -1;
         opt_choice_avail("Upscaler mode", &g_settings.upscale_quality, &mshown, mn, mavail, UPQ_COUNT, UPQ_QUALITY,
                          md.c_str());
@@ -1072,6 +1073,8 @@ static void tab_display(void) {
                              (fg_locks_sr() ? std::string("\n\n") + tr("Locked while DLSS frame generation runs: change it on the title screen.")
                                             : std::string());
             static int fgshown = -1;
+            bool fg_locked = fg_locks_sr();
+            if (fg_locked) opt_disable_next();  // (the feature runs until the title screen tears it down)
             if (opt_choice_avail("Frame generation", &fv, &fgshown, fgn, fgav, 3, 0, fd.c_str())) {
                 g_settings.frame_gen = fv != 0;
                 g_settings.frame_gen_dlss = fv == 2;
