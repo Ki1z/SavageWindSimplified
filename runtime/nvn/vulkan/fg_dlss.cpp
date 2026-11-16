@@ -100,6 +100,7 @@ void fg_dlss_on_title(void) {
     // size wait - a window resize or a kept preset change) does not follow the player here.
     if (g_feature) {
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+        rec_drain();  // (queued but not yet recorded jobs run now: NGX state changes see an empty queue)
         fg_dlss_destroy();
     }
     g_sess_sr_gen0 = 0;
@@ -182,9 +183,20 @@ static void mat_perspective(float *m, float fovy, float aspect, float near_, flo
 }
 
 // The runtime's frame-generation images recur every frame (exec.c fg_image's slots), so the views
-// behind the NGX resource handles are cached for good and only destroyed with the device.
+// behind the NGX resource handles are cached. A display-mode switch remakes the images at the same
+// slots, which would strand the old views here (and run the cache out: five images a size, and the
+// switches pile up), so fg_dlss_destroy clears the cache - it is only called behind a device idle
+// and a drained recorder, so no submission still holds a view then.
+static struct { VkImage image; VkFormat format; bool rw; VkImageView view; } v_views[8];
+static void view_cache_clear(void) {
+    for (int i = 0; i < 8; i++)
+        if (v_views[i].view) {
+            vkDestroyImageView(g_vk.dev, v_views[i].view, NULL);
+            v_views[i] = {};
+        }
+}
 static DlssNgxResourceVK view_resource(const FgImage *im, bool rw) {
-    static struct { VkImage image; VkFormat format; bool rw; VkImageView view; } v[8];
+    auto *v = v_views;
     VkImageView view = NULL;
     for (int i = 0; i < 8; i++) {
         if (v[i].view && v[i].image == im->image && v[i].format == im->format && v[i].rw == rw) {
@@ -226,12 +238,14 @@ bool fg_dlss_available(void) {
 }
 
 void fg_dlss_destroy(void) {
-    // (the views in view_resource's cache stay for the device's lifetime: they belong to images that
-    //  recur every frame, and a submitted command buffer may still hold their handles)
+    // (callers hold the device idle and have drained the recorder first: no submission or queued job
+    //  still holds the feature or the views, so both go now - the cache would strand a display-mode
+    //  switch's dead images and run out of slots across a few switches otherwise)
     if (g_feature) vk_dlss_feature_release(g_feature);
     g_feature = NULL;
     if (g_params) vk_dlss_free_params(g_params);
     g_params = NULL;
+    view_cache_clear();
     g_w = g_h = g_rw = g_rh = 0;
     g_fmt = VK_FORMAT_UNDEFINED;
 }
@@ -337,6 +351,7 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         static int fails;
         if (fails++ % 60 == 0) {
             if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+            rec_drain();  // (queued but not yet recorded jobs run now: NGX state changes see an empty queue)
             fg_dlss_destroy();
         }
         return false;
@@ -414,6 +429,7 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         LOG("[dlss-fg] rebuilding after the SR feature or the sizes changed\n");
         // (the snippet's cubins hold GPU work: releasing mid-flight crashes inside nvngx_dlssg.dll)
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+        rec_drain();  // (queued but not yet recorded jobs run now: NGX state changes see an empty queue)
         fg_dlss_destroy();
         g_sess_excursion = false;
     }
@@ -421,6 +437,7 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         // (an evaluate failed last frame: the feature's own worker may still hold it - the same
         //  wait, then out with it, and the next dispatch creates it again)
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+        rec_drain();  // (queued but not yet recorded jobs run now: NGX state changes see an empty queue)
         fg_dlss_destroy();
         g_rebuild_wanted = false;
         return false;
@@ -431,6 +448,7 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
         LOG("[dlss-fg] rebuilding on request (frame %lld)\n", (long long)f->frame_id);
         // (the snippet's cubins hold GPU work: releasing mid-flight crashes inside nvngx_dlssg.dll)
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+        rec_drain();  // (queued but not yet recorded jobs run now: NGX state changes see an empty queue)
         fg_dlss_destroy();
     }
     // The matrices for this frame (the queue thread: they read only FgFrame and FgConfig).
@@ -454,6 +472,14 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
     j->mv = view_resource(&f->motion, false);
     j->hudless = view_resource(&f->hudless, false);
     j->out = view_resource(&f->out, true);
+    if (!j->back.r.img.view || !j->depth.r.img.view || !j->mv.r.img.view || !j->hudless.r.img.view ||
+        !j->out.r.img.view) {
+        // (a NULL view into NGX is a driver crash, never a graceful refusal: a full cache is a bug -
+        //  destroy clears it - so fail this frame loudly and let the failed-frame path rebuild)
+        LOG("[dlss-fg] the view cache ran out: skipping this frame\n");
+        atomic_store(&g_fg_failed, 1);
+        return false;
+    }
     j->disp_w = c->display_w, j->disp_h = c->display_h, j->rend_w = c->render_w, j->rend_h = c->render_h;
     j->color_format = c->color_format;
     j->reset = f->reset, j->depth_inverted = c->depth_inverted;
