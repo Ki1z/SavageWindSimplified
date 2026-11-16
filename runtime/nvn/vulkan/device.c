@@ -30,6 +30,7 @@
 #include "../output_scale.h"
 #include "../renderer.h"
 #include "dlss.h"
+#include "fg_dlss.h"
 
 #ifdef _WIN32  // (kernel32; windows.h itself clashes with names used here)
 __declspec(dllimport) int __stdcall MoveFileExA(const char *from, const char *to, unsigned long flags);
@@ -2605,6 +2606,12 @@ static void present_locked(NvnTexture *t) {
     }
 presented:
     g_fg_want = fg_wanted();  // (for the next frame's draws)
+    // (back on the title: NGX's generation feature's life is one gameplay session - tearing it down
+    //  here leaves the SR options free to change, and the next entry into the game remakes it fresh)
+    static int fg_title_prev = -1;
+    int fg_title = framepace_title_ui();
+    if (fg_title && !fg_title_prev) fg_dlss_on_title();
+    fg_title_prev = fg_title;
     extern void vk_prof_frame(uint64_t frame, uint64_t present_ns);
     vk_prof_frame(total_frames, SDL_GetTicksNS() - t0);
     extern void vk_list_stats_frame(void);

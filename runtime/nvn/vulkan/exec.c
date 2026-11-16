@@ -10579,8 +10579,10 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
             if (test != 2) rec_drain();  // (FidelityFX and NGX record into cb themselves: what was queued first goes first)
             // NGX's generation shares its runtime with NGX's SR: it runs only while NGX's SR is the
             // upscaler (elsewhere it crashes), and the frame falls to FSR 3's own generation, which
-            // is self-contained - it rebuilds on any config change and runs with any SR engine
-            bool fg_dlss_now = dlss_fg && dlss_wanted();
+            // is self-contained - it rebuilds on any config change and runs with any SR engine. The
+            // title screen runs without it: the feature's life is one gameplay session, and on the
+            // title the SR options stay free to change.
+            bool fg_dlss_now = dlss_fg && dlss_wanted() && !framepace_title_ui();
             ok = test == 2 ? true : fg_dlss_now ? fg_dlss_dispatch(cb, &cfg, &f) : fg_dispatch(cb, &cfg, &f);
             if (test == 2) o = hl;
             vk_full_barrier(cb);

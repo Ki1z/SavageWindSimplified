@@ -27,6 +27,16 @@ static bool g_hold_sr;  // (the generation side's size wait: the SR apply skips 
 
 bool fg_dlss_holding_sr(void) { return g_hold_sr; }
 
+void fg_dlss_on_title(void) {
+    // The feature's life is one gameplay session: the title tears it down, so the SR options can
+    // change freely there (nothing pairs with them), and the next entry into the game creates it
+    // fresh against whatever SR is now - boot's own sequence, which is the one that survives.
+    if (g_feature) {
+        if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
+        fg_dlss_destroy();
+    }
+}
+
 static const char *rname(NVSDK_NGX_Result r) {
     switch (r) {
     case NVSDK_NGX_Result_Success: return "success";
