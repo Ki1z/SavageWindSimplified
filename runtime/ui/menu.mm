@@ -648,7 +648,7 @@ extern "C" {
 // down, keeps them free).
 static bool fg_locks_sr(void) {
 #ifndef __APPLE__
-    return !framepace_title_ui() && g_settings.frame_gen && g_settings.frame_gen_dlss;
+    return !framepace_title_ui() && fg_dlss_armed();
 #else
     return false;
 #endif
@@ -975,7 +975,9 @@ static void tab_display(void) {
         int udef = 0;  // (the reset value: UPSCALE_DEFAULT)
         for (int i = 0; i < NU; i++) if (ups_value[i] == UPSCALE_DEFAULT) udef = i;
         if (sr_locked) opt_disable_next();  // (DLSS FG pairs with the upscaler's feature until the title screen)
-        if (opt_choice_avail("Upscaler", &ui, &shown, ups, avail, NU, udef, ud)) g_settings.upscaler = ups_value[ui];
+        if (opt_choice_avail("Upscaler", &ui, &shown, ups, avail, NU, udef,
+                             sr_locked ? tr("Locked while DLSS frame generation runs: change it on the title screen.") : ud))
+            g_settings.upscaler = ups_value[ui];
         // its mode (AMD's scale factors), one step in; greyed when the upscaler is off
         const char *const *modes = k_upscale_modes;
         bool modes_ok = upscale_modes_available();
@@ -999,7 +1001,7 @@ static void tab_display(void) {
         if (g_settings.upscaler == UPSCALE_OFF || sr_locked) opt_disable_next();
         static int mshown = -1;
         opt_choice_avail("Upscaler mode", &g_settings.upscale_quality, &mshown, mn, mavail, UPQ_COUNT, UPQ_QUALITY,
-                         md.c_str());
+                         sr_locked ? tr("Locked while DLSS frame generation runs: change it on the title screen.") : md.c_str());
         opt_indent(-1);
     }
 #ifdef __APPLE__
@@ -1028,13 +1030,17 @@ static void tab_display(void) {
                "In rain with the sun out, the game's wet lighting blows grass and roofs out to white. On: most of that "
                "glare goes, and the grass keeps its colour and a soft sheen. Applies from the next start.");
 #endif
-    {   // supersampling (nvn/output_scale.c): applies at once
+    {   // supersampling (nvn/output_scale.c): applies at once; it moves the upscaler's input, so it
+        // freezes with the NGX pair too
         static const char *const rscale[] = {"50%", "75%", "100%", "125%", "150%", "200%"};
+        bool rs_locked = fg_locks_sr();
+        if (rs_locked) opt_disable_next();
         opt_choice("Render scale", &g_settings.render_scale, rscale, RSCALE_COUNT, RSCALE_100,
-                   "Below 100% the game renders at a lower resolution than the window and is scaled up to it: faster, "
-                   "but blurrier (50% is a quarter of the pixels, for weak graphics cards). Above 100% it renders at a "
-                   "higher resolution and is scaled down to it, the cleanest way to smooth edges and shimmer. 200% is "
-                   "4x the pixels: for fast graphics cards.", false);
+                   rs_locked ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+                             : "Below 100% the game renders at a lower resolution than the window and is scaled up to it: faster, "
+                             "but blurrier (50% is a quarter of the pixels, for weak graphics cards). Above 100% it renders at a "
+                             "higher resolution and is scaled down to it, the cleanest way to smooth edges and shimmer. 200% is "
+                             "4x the pixels: for fast graphics cards.", false);
     }
 #ifndef __APPLE__
     {   // Anisotropic filtering and sharpening (Vulkan: vulkan/textures.c sampler_aniso, vulkan/exec.c scene_post)
@@ -1059,7 +1065,7 @@ static void tab_display(void) {
         {
             std::string off = tr("Off"), fsr3g = tr("FSR 3"), dlssg = tr("DLSS");
             const char *fgn[] = {off.c_str(), fsr3g.c_str(), dlssg.c_str()};
-            bool fgav[3] = {true, true, fg_dlss_available()};
+            bool fgav[3] = {true, true, fg_dlss_available() && (framepace_title_ui() || fg_dlss_armed())};
             int fv = g_settings.frame_gen ? (g_settings.frame_gen_dlss ? 2 : 1) : 0;
             const char *fgbase =
                 fv == 2 && fg_dlss_available()
@@ -1071,6 +1077,8 @@ static void tab_display(void) {
                          "moves can leave faint smears around Link and what moves on its own.");
             std::string fd = fg_locks_sr()
                                  ? std::string(tr("Locked while DLSS frame generation runs: change it on the title screen."))
+                               : !framepace_title_ui() && !fg_dlss_armed()
+                                 ? std::string(tr("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in."))
                                  : std::string(fgbase);
             static int fgshown = -1;
             bool fg_locked = fg_locks_sr();

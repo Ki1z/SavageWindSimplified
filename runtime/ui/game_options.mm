@@ -58,9 +58,9 @@ bool renderer_gpu_rtx(void);                // vulkan/device.c, metal.m
 namespace {
 
 // DLSS's frame generation pairs with the upscaler's NGX feature for a whole gameplay session, so
-// while it runs in the game the upscaler rows lock (the title screen, where the feature is torn
-// down, keeps them free).
-bool fg_locks_sr(void) { return !framepace_title_ui() && g_settings.frame_gen && g_settings.frame_gen_dlss; }
+// while it is armed in the game the upscaler rows freeze (the title screen, where the feature is
+// torn down, keeps them free).
+bool fg_locks_sr(void) { return !framepace_title_ui() && fg_dlss_armed(); }
 
 // ---- guest memory (main is mapped at its runtime address: plain pointers)
 uint32_t rd32(uint64_t a) { return *(volatile uint32_t *)(uintptr_t)a; }
@@ -583,15 +583,18 @@ void build_items(void) {
                                                     : tr("Ultra Quality is the sharpest, Ultra Performance the fastest.");
     };
     v.push_back(mode);
-    // supersampling (nvn/output_scale.c): applies at once
+    // supersampling (nvn/output_scale.c): applies at once; it moves the upscaler's input, so it
+    // freezes with the NGX pair too
     v.push_back(choice(P_VIDEO_ADV, "Render scale", "Below 100%: faster, blurrier. Above 100%: renders bigger, then shrinks to the window. Smoothest edges.",
-                       [](const Item &) { return (int)RSCALE_COUNT; },
+                       [](const Item &) { return fg_locks_sr() ? 1 : (int)RSCALE_COUNT; },
                        [](const Item &, int x) {
                            static const char *const r[] = {"50%", "75%", "100%", "125%", "150%", "200%"};
-                           return r[x];
+                           return fg_locks_sr() ? r[g_settings.render_scale] : r[x];
                        },
-                       [](const Item &) { return g_settings.render_scale; },
-                       [](const Item &, int x) { g_settings.render_scale = x; }, RSCALE_100));
+                       [](const Item &) { return fg_locks_sr() ? 0 : g_settings.render_scale; },
+                       [](const Item &, int x) {
+                           if (!fg_locks_sr()) g_settings.render_scale = x;
+                       }, RSCALE_100));
 #ifndef __APPLE__
     // the game's own FXAA (vulkan/exec.c fxaa_patch)
     // the wet lighting passes' sun glare (maxwell/translate.c maxwell_wet_lighting): their translations, made at the start
@@ -634,12 +637,14 @@ void build_items(void) {
                            g_settings.frame_gen_dlss = x == 2;
                        }, 0));
     v.back().value_off = [](const Item &, int x) {
-        return x == 2 && !fg_locks_sr() && !fg_dlss_available();  // (DLSS pairs for a session: on from the title)
+        // (DLSS pairs for a session: greyed while playing without it, and on from the title)
+        return x == 2 && (!fg_dlss_available() || (!framepace_title_ui() && !fg_dlss_armed()));
     };
     v.back().desc_fn = [](const Item &) {  // (one line)
-        return fg_locks_sr()                ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
-             : g_settings.frame_gen_dlss    ? tr("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.")
-                                            : tr("Twice the frames on screen. Adds a little delay.");
+        return fg_locks_sr()                             ? tr("Locked while DLSS frame generation runs: change it on the title screen.")
+             : !framepace_title_ui() && !fg_dlss_armed() ? tr("DLSS frame generation arms when you enter the game: set it on the title screen, then step back in.")
+             : g_settings.frame_gen_dlss                 ? tr("NVIDIA DLSS-G on RTX 40 and newer: the upscaler settings lock while you play.")
+                                                         : tr("Twice the frames on screen. Adds a little delay.");
     };
 #endif
     v.push_back(toggle(P_VIDEO_ADV, "Asynchronous shaders", "On: no stutter, but some effects appear late.",

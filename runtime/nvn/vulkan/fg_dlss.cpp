@@ -8,6 +8,11 @@
 #include "fg_dlss.h"
 #include "dlss.h"  // vk_dlss_available; and vk.h for LOG and g_vk
 
+extern "C" {
+#include "../../settings.h"
+#include "../../framepace.h"
+}
+
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
@@ -26,6 +31,17 @@ static VkFormat g_fmt;
 static bool g_hold_sr;  // (the generation side's size wait: the SR apply skips its rebuilds meanwhile)
 
 bool fg_dlss_holding_sr(void) { return g_hold_sr; }
+
+bool fg_dlss_armed(void) {
+    // The engine is decided when a gameplay session starts: on the title screen this follows the
+    // setting live, and stepping into the game freezes it until the next title visit - so toggling
+    // DLSS mid-game records the choice without arming the feature (the settings stay unlocked, only
+    // the choice waits, per the row's hint).
+    static int armed = -1;
+    if (armed < 0 || framepace_title_ui())
+        armed = g_settings.frame_gen && g_settings.frame_gen_dlss && fg_dlss_available();
+    return armed != 0;
+}
 
 void fg_dlss_on_title(void) {
     // The feature's life is one gameplay session: the title tears it down, so the SR options can
@@ -371,6 +387,7 @@ bool fg_dlss_dispatch(VkCommandBuffer cb, const FgConfig *c, const FgFrame *f) {
 
 bool fg_dlss_available(void) { return false; }
 bool fg_dlss_holding_sr(void) { return false; }
+bool fg_dlss_armed(void) { return false; }
 void fg_dlss_on_title(void) {}
 bool fg_dlss_dispatch(VkCommandBuffer, const FgConfig *, const FgFrame *) { return false; }
 void fg_dlss_destroy(void) {}

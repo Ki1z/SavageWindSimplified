@@ -15,6 +15,11 @@ bool fg_dlss_available(void);
 // now (dlss_scene falls back to plain upscaling) so SR's feature never moves under the pair.
 bool fg_dlss_holding_sr(void);
 
+// Whether DLSS frame generation arms for the current gameplay session: decided on the title screen
+// (live with the setting there, frozen once the game is entered). The rows lock only while this is
+// true, and the game's own rows read it to grey the engine choice when it is not.
+bool fg_dlss_armed(void);
+
 // Back on the title screen: tear the feature down (its life is one gameplay session), so the SR
 // options can change freely there and the next entry into the game remakes it against them.
 void fg_dlss_on_title(void);

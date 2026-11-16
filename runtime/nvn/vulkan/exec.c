@@ -10574,8 +10574,8 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
             gp_mark(cb, "frame generation: FSR 3 optical flow + interpolation");
             static int test = -1;  // (measuring) SAVAGEWIND_FG_TEST=2: no interpolation (the HUD-less copy shown instead)
             if (test < 0) test = getenv("SAVAGEWIND_FG_TEST") ? atoi(getenv("SAVAGEWIND_FG_TEST")) : 0;
-            static int dlss_fg = -1;  // Video > Frame generation > DLSS (settings.frame_gen_dlss);
-            if (dlss_fg < 0) {        // (test) SAVAGEWIND_FG_DLSS=1/0 forces it either way
+            static int dlss_fg = -1;  // Video > Frame generation > DLSS (fg_dlss_armed: the engine is
+            if (dlss_fg < 0) {        // decided when a gameplay session starts); SAVAGEWIND_FG_DLSS=1/0 forces it
                 const char *v = getenv("SAVAGEWIND_FG_DLSS");
                 dlss_fg = !v ? 0 : !strcmp(v, "0") ? -2 : 2;
             }
@@ -10585,8 +10585,8 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
             // is self-contained - it rebuilds on any config change and runs with any SR engine. The
             // title screen runs without it: the feature's life is one gameplay session, and on the
             // title the SR options stay free to change.
-            bool fg_dlss_now = (dlss_fg == 2 ? true : dlss_fg == -2 ? false : g_settings.frame_gen && g_settings.frame_gen_dlss) &&
-                               dlss_wanted() && !framepace_title_ui();            ok = test == 2 ? true : fg_dlss_now ? fg_dlss_dispatch(cb, &cfg, &f) : fg_dispatch(cb, &cfg, &f);
+            bool fg_dlss_now = (dlss_fg == 2 ? true : dlss_fg == -2 ? false : fg_dlss_armed()) && dlss_wanted() && !framepace_title_ui();
+            ok = test == 2 ? true : fg_dlss_now ? fg_dlss_dispatch(cb, &cfg, &f) : fg_dispatch(cb, &cfg, &f);
             if (test == 2) o = hl;
             vk_full_barrier(cb);
             gp_mark(cb, "frame generation: done");
