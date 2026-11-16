@@ -3061,6 +3061,12 @@ presented:
     static int fg_title_prev = -1;
     int fg_title = framepace_title_ui();
     if (fg_title && !fg_title_prev) fg_dlss_on_title();
+    if (fg_title) {
+        // (the engine freezes between title visits: it follows the setting here, on the present thread,
+        //  because the generation path - the only other caller - never runs on the title, where fg_wanted
+        //  is false; without this the engine stuck at what the first entry into the game froze)
+        fg_dlss_armed();
+    }
     fg_title_prev = fg_title;
     extern void vk_prof_frame(uint64_t frame, uint64_t present_ns);
     vk_prof_frame(total_frames, SDL_GetTicksNS() - t0);

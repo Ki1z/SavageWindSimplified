@@ -87,8 +87,15 @@ bool fg_dlss_armed(void) {
     // DLSS mid-game records the choice without arming the feature (the settings stay unlocked, only
     // the choice waits, per the row's hint).
     static int armed = -1;
-    if (armed < 0 || framepace_title_ui())
-        armed = g_settings.frame_gen && g_settings.frame_gen_dlss && fg_dlss_available();
+    if (armed < 0 || framepace_title_ui()) {
+        int now = g_settings.frame_gen && g_settings.frame_gen_dlss && fg_dlss_available();
+        static int said_armed = -1;
+        if (now != said_armed) {
+            LOG("[dlss-fg] engine armed: %s\n", now ? "DLSS-G" : "FSR 3");
+            said_armed = now;
+        }
+        armed = now;
+    }
     return armed != 0;
 }
 
@@ -99,9 +106,12 @@ void fg_dlss_on_title(void) {
     // session's bookkeeping resets with it: a retire earned mid-game (an SR rebuild during the
     // size wait - a window resize or a kept preset change) does not follow the player here.
     if (g_feature) {
+        LOG("[dlss-fg] back on the title: the session's feature torn down\n");
         if (g_fg_vk.wait_idle) g_fg_vk.wait_idle();
         rec_drain();  // (queued but not yet recorded jobs run now: NGX state changes see an empty queue)
         fg_dlss_destroy();
+    } else {
+        LOG("[dlss-fg] back on the title (no feature was live)\n");
     }
     g_sess_sr_gen0 = 0;
     g_sess_sr_init = false;

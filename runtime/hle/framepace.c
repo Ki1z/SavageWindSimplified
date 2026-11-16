@@ -168,8 +168,15 @@ bool framepace_dialogue_ui(void) {
 
 // (screens: 1 the start screen, 0x38 its load and confirmation menus; 0x38 can also be used over a paused game)
 bool framepace_title_ui(void) {
-    if (*(uint32_t *)(uintptr_t)PAUSE_STATE) return false;
-    return screen_up(1) || screen_up(0x38);
+    static int prev = -1;
+    int pause = *(uint32_t *)(uintptr_t)PAUSE_STATE;
+    int now = !pause && (screen_up(1) || screen_up(0x38));
+    if (now != prev) {  // (the frame generation engine freezes between title visits: transitions explain it)
+        LOG("[ui] title screen %d -> %d (pause state %d, start screen %s)\n", prev, now, pause,
+            screen_up(1) ? "up" : "down");
+        prev = now;
+    }
+    return now;
 }
 bool framepace_dlc_ui(void) { return screen_up(0x3f); }  // (screen 0x3f)
 
