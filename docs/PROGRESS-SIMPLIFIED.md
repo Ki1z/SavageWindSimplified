@@ -279,3 +279,11 @@
 - **SW Update 自更新按 fork 语境禁用**（上游 61 提交新引入）：其发布签名、sw-manifest 清单、版本流都是上游的，fork 玩家走它会拿上游构建覆盖 fork 文件。改三处最小差异：launcher.mm 启动检查注释掉（注释说明原因）、settings 默认 `check_updates=false`、dist 不打 `SW Update.exe`/清单。UI 代码原样保留（状态永不满足自然失活），下次同步冲突面最小。
 - **DLSS SR 启用**：SDK v310.9.1 浅克隆到仓库外 `../DLSS`（github.com git 协议可达；raw.githubusercontent 在本网络不通）。`make_dlss_import.py` 首跑即过，exe 内含 NGX 符号（`NVSDK_NGX_VULKAN_Init` 等）。菜单文案 13 表：FSR 3 段去掉"DLSS 后续版本推出"尾句（新键，旧行保留），DLSS 独立段按上游 FSR 4 段句式翻译。上游代码路径（dlss.cpp/dlss_compat.c/Makefile 检测）全部现成，fork 只补了 SDK 与文案。
 - **DLSS 真机 E2E ✅（2026-11-15，RTX 4060 Laptop GPU，驱动 Vulkan 1.4.325）**：无人值守全链路——新增 `SAVAGEWIND_SETUP_PACKAGES` 测试钩子（镜像"从游戏包设置"按钮，scratch ini 即全部输入）→ 三包提取 50,728 文件（18.0.0 keys 四 rights id 全中）→ zig 玩家路径编译 swgame.dll 222MB → warp 台地：`[dlss] first frame: 853x480 -> 1280x720, depth, camera motion vectors, jittered`（853/1280 = 0.667，恰为 Quality 档；抖动+运动向量+深度全接通），60.0 fps 锁定、40 万+ draws/2s、2.5 分钟零设备丢失。NGX ProjectID 用上游的 custom-engine GUID（无需 NVIDIA 签发 ID）；DLL 由 exe 旁路径命中（`rt_resource("nvngx_dlss.dll")`）。
+
+### 3.12 DLSS 帧生成与会话生命周期（2026-11-16，0.5.4）
+
+- **DLSS FG（fg_dlss.cpp）✅**：NGX DLSS-G（RTX 40+），SDK 静态导入库 + exe 旁 `nvngx_dlssg.dll`；与 DLSS SR 配对出帧。冒烟 28,200-30,000 帧零 evaluate 失败、52-60 生成/104-120 呈现 fps、零崩溃。真机（4060 Laptop）实测确认。
+- **会话生命周期定律**（10+ 次崩溃换来的经验完整版）：FG 特征=一次游戏会话的粒度——主界面自由调节（`fg_dlss_on_title` 销毁+会话状态重置）、进存档时按当前 SR 配置创建（armed 定格）、游戏内六行冻结（帧生成/超分方式/超分模式/抗锯齿/渲染比例/动态分辨率/画质预设，两个设置界面+左箭头存储防护）、全屏/窗口行不锁但描述换警示文案。
+- **尺寸移动的定论**：加载屏短暂抖动=持有(600 dispatch)+安静期(90 帧)自愈；真正持续的尺寸变化（保留预设/窗口拖拽/全屏切换——最后者绕过持有直接重建渲染目标）=FG 退役至下一次标题屏。**原地对重启实验失败**：销毁→SR 重建→旁边新建，两次一致崩溃（安全创建窗口只有 boot 和标题屏，游戏世界两者都不是）。退役由日志明示，回标题自动清除（不再是"重启才恢复"）。
+- **未做**：Reflex（VK_NV_low_latency2，FG 收官后的下一步）；量化对照（确定性回放 A/B 差异图、PresentMon 间距）。
+- **上游 0.6.0 观察（2026-11-16）**：上游把 DLSS SR 重写为 SDK 无关化（运行时加载驱动 NGX + vtable ABI 手声明 + dlss_fetch.c 下载 nvngx_dlss.dll + 异步录制线程重建），dlss.cpp 被删。合并需把 fork 的 FG 三钩子（settled/generation/hold）重接到新 dlss.c——待办，未开始。

@@ -2,7 +2,30 @@
 
 What changed in each Savage Wind release. The `test` branch holds what the next one will contain.
 
-## Next (on the `test` branch)
+## 0.5.4 - 2026-11-16
+
+**Updating:** this is a fork release: the zip from the fork's releases page, applied by hand. Your game files, saves
+and settings stay.
+
+### Features
+
+- **NVIDIA DLSS frame generation** (Video > Advanced > Frame generation, the DLSS value): on RTX 40 and newer, NVIDIA's
+  DLSS-G makes a frame between each two the game draws, next to the DLSS upscaler it pairs with. The pairing is one
+  gameplay session: set the engine, the upscaler and its mode on the title screen and step into the game; in play the
+  rows that would move the NGX pairing freeze (frame generation, the upscaler and its mode, anti-aliasing, render
+  scale, dynamic resolution, the graphics preset), and the description of each says where to set it. The fullscreen
+  and window-size rows stay adjustable, but their descriptions warn what a switch costs: a moved render size retires
+  the generation until the next title screen, where the session resets and re-entering the game makes both features
+  against the new size together. Loading screens are waited out; a preset change in play retires the pairing the same
+  way; nothing of it crashes. Without the DLSS DLL or an RTX 40 GPU the value is greyed out, and FSR 3's frame
+  generation remains for every other card. This fork ships NVIDIA's `nvngx_dlssg.dll` under the NVIDIA RTX SDK
+  licence (see `NVIDIA-DLSS-LICENSE.txt` in the zip).
+- **NVIDIA DLSS upscaling** (Video > Upscaler): NVIDIA's deep-learning upscaler with its quality modes, on Windows
+  with an NVIDIA RTX GPU. The build links NVIDIA's DLSS SDK; the zip ships the SDK's `nvngx_dlss.dll` under the same
+  licence. Off the record of this entry, frame generation above needs it.
+- **The built-in update check is switched off:** this fork does not carry the updater (`SW Update.exe` and its
+  manifest are upstream's, tied to upstream's release signature and version stream); updates are the zip from the
+  fork's releases page. Nothing phones home or offers an update from inside the game.
 
 ### Performance
 

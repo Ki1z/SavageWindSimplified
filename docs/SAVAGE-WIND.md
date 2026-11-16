@@ -1962,6 +1962,52 @@ frame's PSNR against each is 1.5-2.5 dB over theirs against each other, so it li
   measured: the added latency. The Linux build of the SDK's sources (`ffx_compat.h` has what glibc lacks) isn't
   tried yet.
 
+## NVIDIA DLSS frame generation (Video > Advanced > Frame generation, the DLSS value)
+
+`runtime/nvn/vulkan/fg_dlss.cpp` (Windows, RTX 40 and newer): NVIDIA's DLSS-G through the NGX runtime, loaded at
+start from the SDK's static import library, `nvngx_dlssg.dll` next to the exe. The feature makes a frame between each
+two the game draws, beside the DLSS upscaler whose NGX feature it pairs with; without that upscaler, the DLL or an
+RTX 40 GPU it is greyed out, and FSR 3's frame generation takes every other card. There is no Reflex in this fork
+(yet): pacing is the runtime's own two-present scheme from the section above, and the generation only follows it.
+
+**One NGX law the whole design bends around:** a generation feature is built for one size and pairs with one
+super-resolution feature. Remaking either while the pair is whole has crashed the process in every shape tried
+during a loading stream, at a menu toggle, after a preset round trip; nine crashes total. What survives, every time:
+creating both against a quiescent NGX runtime (the game's boot, and the title screen with its teardown before each
+entry into the game), rebuilding the generation feature alone at a calm gameplay moment after the super-resolution
+feature never rebuilt (the sizes came back equal), and releasing the generation feature before anything else moves
+(`wait_idle` then release, the title screen's move).
+
+**The session is the unit.** The title screen follows the settings live and tears the feature down
+(`fg_dlss_on_title`, from the window loop's title detection); stepping into the game freezes the choice
+(`fg_dlss_armed`) and creates the pair against whatever was set, in boot's own order. In play the settings that
+would move the pairing freeze in both screens (frame generation, the upscaler and its mode, anti-aliasing, render
+scale, dynamic resolution, the graphics preset), with each row's description saying where to set it; the game's own
+options screen also stores nothing from a frozen row (the guest arrow handler can provoke a store). The fullscreen,
+fullscreen-mode and window-size rows stay adjustable, their descriptions swapped for the warning: they move the
+render size, and the OS can move it too.
+
+**A render size that really moves** (a kept preset, a resized window, a display-mode switch - the last of these
+re-inits the render targets without passing through the scene's apply) pauses the generation, lets the runtime's
+hold expire, and retires the pairing until the next title screen, which resets the session's bookkeeping; the next
+entry into the game makes both features against the new size together. An in-place restart - destroy the generation
+feature, let the upscaler rebuild, create fresh beside it - was tried twice and crashed the game twice, exactly as
+the law predicts: the creates that survive are boot's and the title screen's, and the world is neither. Loading
+screens are different: their size flaps are waited out behind a hold that also stops the scene's apply from
+rebuilding the upscaler (600 dispatches, about 5-10 s), and the generation rebuilds alone at a calm moment, ninety
+sane frames after the upscaler has settled.
+
+**Hooks** (`runtime/nvn/vulkan/exec.c`): the frame generation block dispatches `fg_dlss_dispatch` instead of
+`fg_dispatch` while the engine is DLSS (`fg_dlss_now`, from `fg_dlss_armed`, `SAVAGEWIND_FG_DLSS` forces it for
+tests); the scene's DLSS apply skips while the hold is on (`fg_dlss_holding_sr`); `dlss.cpp` reports whether its
+feature has settled (`vk_dlss_settled`) and a generation counter (`vk_dlss_generation`) that the generation side
+watches, rebuilding alone on any settled change. The dispatch skips its own evaluation while the upscaler is
+mid-rebuild or just took its history-reset frame - the 0xf8 reads inside `nvngx_dlssg.dll` came from evaluating
+beside that. Tests: the smoke is `test/e2e_fgdlss.sh` (unattended, the plateau warp, 30000-frame watchdog);
+`SAVAGEWIND_FG_DLSS=1` forces the engine, `SAVAGEWIND_FG_DLSS_RESTART_AT=<frame>` forces a same-size rebuild
+mid-gameplay (the experiment that proved calm rebuilds). The distribution ships `nvngx_dlssg.dll` from NVIDIA's
+DLSS SDK under its licence (the Makefile's dist block).
+
 ## Colour grading (Options > Colour)
 
 Options > Colour (the game's own Options screen; also the F1 menu's Video tab, section Colour) grades the 3D image:

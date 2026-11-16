@@ -28,6 +28,12 @@ The upstream setup takes a folder of already-extracted game files (exefs and rom
   the SDK beside the checkout (`../DLSS`) was the missing piece. On NVIDIA RTX graphics cards, DLSS joins AMD
   FSR in the game's graphics options; without the SDK, or on other GPUs, the game scales with FSR exactly as
   upstream's does.
+- **NVIDIA DLSS frame generation** (this fork's own work): on RTX 40 and newer, Video > Advanced > Frame
+  generation's DLSS value makes a frame between each two the game draws, beside the DLSS upscaler it pairs with.
+  The pairing is one gameplay session: everything it depends on is set on the title screen and freezes in play
+  (each frozen row's description says where to set it), a moved render size retires the generation until the
+  next title screen, and nothing of it crashes. FSR 3's frame generation remains for every other card. The
+  release ships NVIDIA's `nvngx_dlssg.dll` under the SDK's licence, like `nvngx_dlss.dll` before it.
 
 Everything else is upstream Savage Wind, with two deliberate fork differences: the DLSS pieces above, and no
 in-app updater — upstream's SW Update checks, signs and versions its own releases, so updating through it
@@ -69,8 +75,8 @@ package flow adds these pieces:
   `swgen/`, the gamelib headers, the fonts and the licence files. That folder is what a release zip holds.
   It also bundles NVIDIA DLSS when the SDK sits beside the checkout: clone NVIDIA's
   [DLSS repository](https://github.com/NVIDIA/DLSS) at its `v310.9.1` tag to `../DLSS`, and the release
-  gets `nvngx_dlss.dll` (unchanged) with `NVIDIA-DLSS-LICENSE.txt`. Without it the build is fine — DLSS
-  just isn't in that release.
+  gets `nvngx_dlss.dll` and `nvngx_dlssg.dll` (both unchanged) with `NVIDIA-DLSS-LICENSE.txt`. Without it
+  the build is fine — DLSS just isn't in that release.
 
 ## Credits and License
 
@@ -97,8 +103,9 @@ The Windows release zip bundles, unchanged unless noted, under their own license
 - [nstool](https://github.com/jakcron/nstool) (MIT, `nstool/LICENSE`), the package unpacker behind the
   game-files setup's "from game packages" flow, built from this project's fork of it (the `--titlekeyset`
   option re-enabled).
-- NVIDIA DLSS, when a release has it: `nvngx_dlss.dll` (DLSS SDK 3.10.9, redistributed unchanged) under
-  its own license at `NVIDIA-DLSS-LICENSE.txt`; the NGX runtime itself ships with the NVIDIA driver.
+- NVIDIA DLSS, when a release has it: `nvngx_dlss.dll` and `nvngx_dlssg.dll` (DLSS SDK 3.10.9, redistributed
+  unchanged) under its own license at `NVIDIA-DLSS-LICENSE.txt`; the NGX runtime itself ships with the NVIDIA
+  driver.
 - The Fira Sans font, Medium and SemiBold (SIL OFL 1.1, `FiraSans-OFL.txt`), and the Noto Sans Thai and Noto
   Sans Hebrew fonts, Medium, for the menus in Thai and Hebrew (SIL OFL 1.1, `NotoSansThai-OFL.txt`,
   `NotoSansHebrew-OFL.txt`).

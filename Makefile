@@ -462,6 +462,9 @@ dist:
 		cp "$(DLSS_SDK)/lib/Windows_x86_64/rel/nvngx_dlss.dll" "$(DIST)/"; \
 		cp "$(DLSS_SDK)/LICENSE.txt" "$(DIST)/NVIDIA-DLSS-LICENSE.txt"; \
 	fi
+	if [ -f "$(DLSS_SDK)/lib/Windows_x86_64/rel/nvngx_dlssg.dll" ]; then \
+		cp "$(DLSS_SDK)/lib/Windows_x86_64/rel/nvngx_dlssg.dll" "$(DIST)/"; \
+	fi  # (DLSS's frame generation, runtime/nvn/vulkan/fg_dlss.cpp; same NVIDIA licence, already shipped above)
 	$(MAKE) $(B)/nstool/nstool.exe
 	mkdir "$(DIST)/nstool" && cp $(B)/nstool/nstool.exe "$(DIST)/nstool/" && cp $(NSTOOL_SRC)/LICENSE "$(DIST)/nstool/LICENSE"
 	PATH="$(CURDIR)/build/deps-win/bin:$$PATH" ldd $(WIN_B)/savagewind.exe | awk '(/ucrt64/ || /deps-win/) && !/vulkan-1/ {print $$3}' | sort -u | \
